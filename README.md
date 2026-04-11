@@ -47,7 +47,7 @@ Drop files into your watched folders and Tifaw will automatically understand, de
 ### Setup
 
 ```bash
-git clone https://github.com/your-username/tifaw.git
+git clone https://github.com/brahim-guaali/Tifaw.git
 cd tifaw
 make setup    # installs deps, pulls gemma4:e4b, creates ~/.tifaw
 ```
@@ -128,4 +128,4 @@ make clean     # remove caches and build artifacts
 
 ## License
 
-Apache License 2.0. See [LICENSE](../LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE).
