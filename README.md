@@ -2,7 +2,7 @@
 
 **Local AI that brings clarity to your files.**
 
-Tifaw (ⵜⵉⴼⴰⵡ) - meaning "clarity" or "radiance" in Tamazight (Amazigh/Berber) -- is a local AI desktop assistant and smart file organizer powered by Google's Gemma 4 E4B model running entirely on your machine through Ollama. No cloud, no telemetry, no subscriptions.
+Tifaw (ⵜⵉⴼⴰⵡ) - meaning "clarity" or "radiance" in Tamazight (Amazigh/Berber) - is a local AI desktop assistant and smart file organizer powered by Google's Gemma 4 E4B model running entirely on your machine through Ollama. No cloud, no telemetry, no subscriptions.
 
 Drop files into your watched folders and Tifaw will automatically understand, describe, tag, categorize, and organize them using multimodal AI. Search your files with natural language, get smart rename suggestions for generic filenames, and chat with an AI that knows your file system.
 
