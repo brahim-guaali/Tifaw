@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
 router = APIRouter(tags=["files"])
 
@@ -74,3 +77,20 @@ async def reindex_file(file_id: int):
         await app.state.index_queue.enqueue(file["path"], priority=0)
 
     return {"status": "queued", "file_id": file_id}
+
+
+@router.get("/files/{file_id}/preview")
+async def preview_file(file_id: int):
+    """Serve the actual file for preview (images, PDFs, etc.)."""
+    from tifaw.main import db
+
+    file = await db.get_file(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    path = Path(file["path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File no longer exists on disk")
+
+    media_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    return FileResponse(path, media_type=media_type, filename=path.name)

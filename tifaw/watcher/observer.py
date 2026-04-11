@@ -56,7 +56,19 @@ class FileWatcher:
                         await self.queue.enqueue(str(item), priority=3)
                         count += 1
         except PermissionError:
-            logger.warning("Permission denied scanning %s — grant Full Disk Access in System Settings", folder)
+            logger.info("Permission denied for %s — falling back to Spotlight index", folder)
+            try:
+                from tifaw.indexer.spotlight import import_and_queue
+
+                count = await import_and_queue(
+                    str(folder),
+                    self.db,
+                    self.queue,
+                    supported_extensions=set(self.settings.supported_extensions),
+                    max_file_size=self.settings.max_file_size_mb * 1024 * 1024,
+                )
+            except Exception as e:
+                logger.warning("Spotlight fallback failed for %s: %s", folder, e)
         logger.info("Queued %d files from initial scan of %s", count, folder)
 
     def stop(self) -> None:
