@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tifaw</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body x-data="app()" x-init="init()">
+
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <rect width="28" height="28" rx="6" fill="var(--accent)"/>
+                    <path d="M8 10h12M8 14h8M8 18h10" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span class="logo-text">Tifaw</span>
+            </div>
+        </div>
+
+        <div class="nav-items">
+            <button class="nav-item" :class="{ active: view === 'dashboard' }" @click="view = 'dashboard'">
+                <span class="nav-icon">⬡</span> Dashboard
+            </button>
+            <button class="nav-item" :class="{ active: view === 'search' }" @click="view = 'search'">
+                <span class="nav-icon">⌕</span> Search
+            </button>
+            <button class="nav-item" :class="{ active: view === 'folders' }" @click="view = 'folders'">
+                <span class="nav-icon">▤</span> Folders
+            </button>
+            <button class="nav-item" :class="{ active: view === 'chat' }" @click="view = 'chat'">
+                <span class="nav-icon">◉</span> Chat
+            </button>
+            <button class="nav-item" :class="{ active: view === 'renames' }" @click="view = 'renames'; loadRenames()">
+                <span class="nav-icon">✎</span> Renames
+                <span x-show="status.pending_renames > 0" class="badge" x-text="status.pending_renames"></span>
+            </button>
+            <button class="nav-item" :class="{ active: view === 'projects' }" @click="view = 'projects'">
+                <span class="nav-icon">⟨/⟩</span> Projects
+            </button>
+        </div>
+
+        <div class="sidebar-footer">
+            <div class="status-indicator">
+                <span class="dot" :class="status.ollama_connected ? 'green' : 'red'"></span>
+                <span x-text="status.ollama_connected ? 'Gemma 4 Online' : 'Ollama Offline'"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="content">
+
+        <!-- Dashboard View -->
+        <div x-show="view === 'dashboard'" class="view">
+            <h1>Dashboard</h1>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" x-text="status.total_files">0</div>
+                    <div class="stat-label">Total Files</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" x-text="status.indexed_files">0</div>
+                    <div class="stat-label">Indexed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" x-text="status.pending_files">0</div>
+                    <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-card accent">
+                    <div class="stat-value" x-text="status.pending_renames">0</div>
+                    <div class="stat-label">Renames</div>
+                </div>
+            </div>
+
+            <!-- Watched Folders -->
+            <h2>Watched Folders</h2>
+            <div class="folder-grid">
+                <template x-for="folder in status.watched_folders" :key="folder">
+                    <button class="folder-card" @click="openFolder(folder)">
+                        <div class="folder-icon">📁</div>
+                        <div class="folder-name" x-text="folder.split('/').pop()"></div>
+                        <div class="folder-path" x-text="folder"></div>
+                    </button>
+                </template>
+            </div>
+
+            <!-- Recent Files -->
+            <h2>Recent Files</h2>
+            <div class="file-list">
+                <template x-for="file in recentFiles" :key="file.id">
+                    <div class="file-card" @click="selectedFile = file">
+                        <div class="file-icon" x-text="getFileIcon(file.extension)"></div>
+                        <div class="file-info">
+                            <div class="file-name" x-text="file.filename"></div>
+                            <div class="file-desc" x-text="file.description || 'Pending analysis...'"></div>
+                        </div>
+                        <div class="file-tags">
+                            <template x-for="tag in (file.tags || []).slice(0, 3)" :key="tag">
+                                <span class="tag" x-text="tag"></span>
+                            </template>
+                        </div>
+                        <div class="file-status">
+                            <span class="status-badge" :class="file.status" x-text="file.status"></span>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="recentFiles.length === 0" class="empty-state">
+                    No files indexed yet. Drop files in your watched folders to get started.
+                </div>
+            </div>
+        </div>
+
+        <!-- Search View -->
+        <div x-show="view === 'search'" class="view">
+            <div class="search-container">
+                <input
+                    type="text"
+                    class="search-input"
+                    placeholder="Search your files... (e.g. 'invoices from March')"
+                    x-model="searchQuery"
+                    @input.debounce.300ms="performSearch()"
+                    @keydown.enter="performSearch()"
+                    autofocus
+                >
+            </div>
+            <div class="search-results">
+                <div x-show="searchQuery && searchResults.length === 0" class="empty-state">
+                    No results found for "<span x-text="searchQuery"></span>"
+                </div>
+                <template x-for="file in searchResults" :key="file.id">
+                    <div class="file-card" @click="selectedFile = file">
+                        <div class="file-icon" x-text="getFileIcon(file.extension)"></div>
+                        <div class="file-info">
+                            <div class="file-name" x-text="file.filename"></div>
+                            <div class="file-desc" x-text="file.description"></div>
+                        </div>
+                        <div class="file-tags">
+                            <template x-for="tag in (file.tags || []).slice(0, 3)" :key="tag">
+                                <span class="tag" x-text="tag"></span>
+                            </template>
+                        </div>
+                        <span class="category-badge" x-text="file.category"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Folder Browser View -->
+        <div x-show="view === 'folders'" class="view">
+            <h1>Folder Browser</h1>
+            <div class="folder-tabs">
+                <template x-for="folder in status.watched_folders" :key="folder">
+                    <button
+                        class="folder-tab"
+                        :class="{ active: activeFolder === folder }"
+                        @click="openFolder(folder)"
+                        x-text="folder.split('/').pop()"
+                    ></button>
+                </template>
+            </div>
+            <div x-show="folderGroups" class="category-groups">
+                <template x-for="(files, category) in folderGroups" :key="category">
+                    <details class="category-group" open>
+                        <summary>
+                            <span class="category-name" x-text="category"></span>
+                            <span class="category-count" x-text="files.length + ' files'"></span>
+                        </summary>
+                        <div class="file-list">
+                            <template x-for="file in files" :key="file.id">
+                                <div class="file-card compact" @click="selectedFile = file">
+                                    <div class="file-icon" x-text="getFileIcon(file.extension)"></div>
+                                    <div class="file-info">
+                                        <div class="file-name" x-text="file.filename"></div>
+                                        <div class="file-desc" x-text="file.description || ''"></div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </details>
+                </template>
+            </div>
+        </div>
+
+        <!-- Chat View -->
+        <div x-show="view === 'chat'" class="view chat-view">
+            <div class="chat-messages" id="chatMessages">
+                <template x-for="msg in chatMessages" :key="msg.timestamp">
+                    <div class="chat-bubble" :class="msg.role">
+                        <div class="bubble-content" x-html="renderMarkdown(msg.content)"></div>
+                    </div>
+                </template>
+                <div x-show="chatLoading" class="chat-bubble assistant">
+                    <div class="bubble-content typing">
+                        <span class="dot-pulse"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <input
+                    type="text"
+                    class="chat-input"
+                    placeholder="Ask about your files..."
+                    x-model="chatInput"
+                    @keydown.enter="sendChat()"
+                >
+                <button class="send-btn" @click="sendChat()" :disabled="!chatInput.trim() || chatLoading">
+                    Send
+                </button>
+            </div>
+        </div>
+
+        <!-- Rename Review View -->
+        <div x-show="view === 'renames'" class="view">
+            <div class="view-header">
+                <h1>Smart Renames</h1>
+                <button
+                    x-show="renameProposals.length > 0"
+                    class="btn btn-primary"
+                    @click="approveAllRenames()"
+                >Approve All</button>
+            </div>
+            <div class="rename-list">
+                <template x-for="proposal in renameProposals" :key="proposal.file_id">
+                    <div class="rename-card">
+                        <div class="rename-names">
+                            <div class="rename-old">
+                                <span class="label">Current:</span>
+                                <span x-text="proposal.current_name"></span>
+                            </div>
+                            <div class="rename-arrow">→</div>
+                            <div class="rename-new">
+                                <span class="label">Suggested:</span>
+                                <span class="suggested" x-text="proposal.suggested_name"></span>
+                            </div>
+                        </div>
+                        <div class="rename-desc" x-text="proposal.description"></div>
+                        <div class="rename-actions">
+                            <button class="btn btn-success btn-sm" @click="approveRename(proposal.file_id)">Approve</button>
+                            <button class="btn btn-ghost btn-sm" @click="dismissRename(proposal.file_id)">Dismiss</button>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="renameProposals.length === 0" class="empty-state">
+                    No pending renames. Files with generic names will appear here with AI-suggested names.
+                </div>
+            </div>
+        </div>
+
+        <!-- Projects View -->
+        <div x-show="view === 'projects'" class="view">
+            <h1>Projects</h1>
+            <div class="empty-state">
+                Project scanner coming soon. Will detect and display all your code projects.
+            </div>
+        </div>
+
+    </main>
+
+    <!-- File Detail Modal -->
+    <div x-show="selectedFile" class="modal-overlay" @click.self="selectedFile = null" x-transition>
+        <div class="modal" x-show="selectedFile">
+            <div class="modal-header">
+                <h2 x-text="selectedFile?.filename"></h2>
+                <button class="modal-close" @click="selectedFile = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="detail-row">
+                    <span class="detail-label">Description</span>
+                    <span x-text="selectedFile?.description || 'Not yet analyzed'"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Category</span>
+                    <span class="category-badge" x-text="selectedFile?.category"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Tags</span>
+                    <div class="file-tags">
+                        <template x-for="tag in (selectedFile?.tags || [])" :key="tag">
+                            <span class="tag" x-text="tag"></span>
+                        </template>
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Path</span>
+                    <span class="file-path" x-text="selectedFile?.path"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Status</span>
+                    <span class="status-badge" :class="selectedFile?.status" x-text="selectedFile?.status"></span>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-ghost" @click="reindexFile(selectedFile?.id)">Re-index</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
