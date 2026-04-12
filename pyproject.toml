@@ -26,6 +26,7 @@ dependencies = [
     "python-multipart>=0.0.18",
     "aiosqlite>=0.21",
     "pyobjc-framework-Vision>=10.0; sys_platform == 'darwin'",
+    "pywebview>=5.0",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +38,7 @@ dev = [
 
 [project.scripts]
 tifaw = "tifaw.main:run"
+tifaw-app = "tifaw.app:main"
 
 [tool.ruff]
 target-version = "py311"

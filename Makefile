@@ -1,6 +1,6 @@
 VENV := .venv/bin
 
-.PHONY: setup dev lint test clean
+.PHONY: setup dev app lint test clean
 
 setup:
 	@echo "Installing dependencies..."
@@ -13,6 +13,9 @@ setup:
 
 dev:
 	$(VENV)/uvicorn tifaw.main:app --host 127.0.0.1 --port 8321 --reload
+
+app:
+	$(VENV)/python -m tifaw.app
 
 lint:
 	$(VENV)/ruff check tifaw/ tests/
