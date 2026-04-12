@@ -8,6 +8,9 @@ function app() {
         // Overview
         overview: null,
         overviewLoading: true,
+        aiNarrative: null,
+        aiDigest: null,
+        photoStories: [],
 
         // Photos
         photos: [],
@@ -17,12 +20,14 @@ function app() {
         photosActiveCategory: null,
         photosLoading: false,
         photosOffset: 0,
+        photosStoryMonth: null,
 
         // People
         people: { named: [], unnamed: [] },
         peopleLoading: false,
         activePerson: null,
         personPhotos: [],
+        personSummary: null,
 
         // Documents
         documentGroups: [],
@@ -52,6 +57,7 @@ function app() {
         configData: {},
         configSaving: false,
         reindexingAll: false,
+        settingsPeople: [],
 
         // Faces
         fileFaces: [],
@@ -62,11 +68,64 @@ function app() {
         mergePickerOpen: false,
         mergePickerList: [],
 
+        // Bulk selection
+        selectionMode: false,
+        selectedFiles: [],
+
         // File detail
         selectedFile: null,
 
         // Folder picker
         folderPicker: { open: false, path: '', dirs: [], parent: null, target: null, index: null },
+
+        // AI busy state
+        aiBusy: false,
+        aiBusyLabel: '',
+        aiConflict: { show: false, pendingAction: null, pendingLabel: '' },
+
+        // Check if AI is available, show conflict dialog if busy
+        async requestAI(label, action) {
+            if (!this.aiBusy && !this.chatLoading) {
+                // AI is free, run immediately
+                await action();
+                return;
+            }
+            // AI is busy — show conflict dialog
+            this.aiConflict = { show: true, pendingAction: action, pendingLabel: label };
+        },
+        async aiConflictWait() {
+            // User chose to wait — close dialog, don't run yet
+            this.aiConflict.show = false;
+            this.showToast('Waiting for current AI task to finish...');
+            // Poll until AI is free, then run
+            const action = this.aiConflict.pendingAction;
+            const check = () => {
+                if (!this.aiBusy && !this.chatLoading) {
+                    action();
+                } else {
+                    setTimeout(check, 1000);
+                }
+            };
+            setTimeout(check, 1000);
+        },
+        async aiConflictPrioritize() {
+            // User chose to pause current work and prioritize this request
+            this.aiConflict.show = false;
+            try {
+                await fetch('/api/indexing/pause', { method: 'POST' });
+            } catch (e) { }
+            // Small delay to let current Ollama request finish
+            this.showToast('Pausing indexing to prioritize your request...');
+            const action = this.aiConflict.pendingAction;
+            setTimeout(async () => {
+                await action();
+                // Resume indexing after
+                try { await fetch('/api/indexing/resume', { method: 'POST' }); } catch (e) { }
+            }, 500);
+        },
+        aiConflictDismiss() {
+            this.aiConflict = { show: false, pendingAction: null, pendingLabel: '' };
+        },
 
         // Toast
         toast: { show: false, message: '', type: 'success' },
@@ -113,7 +172,7 @@ function app() {
             this.view = v;
             this.sidebarOpen = false;
             if (v === 'overview') this.loadOverview();
-            if (v === 'photos') this.loadPhotos(true);
+            if (v === 'photos') { this.photosStoryMonth = null; this.loadPhotos(true); }
             if (v === 'people') this.loadPeople();
             if (v === 'documents') this.loadDocuments();
             if (v === 'projects') this.loadProjects();
@@ -145,6 +204,12 @@ function app() {
                     if (this.overview.photo_locations?.length) this.initMap(this.overview.photo_locations);
                     if (this.overview.calendar_heatmap) this.renderHeatmap(this.overview.calendar_heatmap);
                 });
+                // Fetch AI-powered content lazily after main render (non-blocking)
+                setTimeout(() => {
+                    fetch('/api/overview/narrative').then(r => r.json()).then(d => { this.aiNarrative = d.narrative; }).catch(() => {});
+                    fetch('/api/overview/digest').then(r => r.json()).then(d => { this.aiDigest = d.digest; }).catch(() => {});
+                    fetch('/api/overview/photo-stories').then(r => r.json()).then(d => { this.photoStories = d.stories || []; }).catch(() => {});
+                }, 500);
             } catch (e) {
                 console.error('Overview failed:', e);
             }
@@ -186,6 +251,9 @@ function app() {
                 let url = `/api/photos?limit=60&offset=${this.photosOffset}`;
                 if (this.photosActivePerson) url += `&person=${encodeURIComponent(this.photosActivePerson)}`;
                 if (this.photosActiveCategory) url += `&category=${encodeURIComponent(this.photosActiveCategory)}`;
+                if (this.photosStoryMonth) {
+                    url += `&date_from=${this.photosStoryMonth}-01&date_to=${this.photosStoryMonth}-31`;
+                }
                 const r = await fetch(url);
                 const data = await r.json();
                 if (reset) this.photos = data.photos;
@@ -196,6 +264,16 @@ function app() {
                 this.photosOffset += data.photos.length;
             } catch (e) { console.error('Photos failed:', e); }
             this.photosLoading = false;
+        },
+
+        openPhotoStory(story) {
+            this.view = 'photos';
+            this.photosActivePerson = story.people?.length === 1 ? story.people[0] : null;
+            this.photosActiveCategory = null;
+            // Filter by month
+            this.photosStoryMonth = story.month || null;
+            this.loadPhotos(true);
+            this.sidebarOpen = false;
         },
 
         filterPhotosByPerson(name) {
@@ -230,10 +308,13 @@ function app() {
 
         async showPersonPhotos(name) {
             this.activePerson = name;
+            this.personSummary = null;
             try {
                 const r = await fetch(`/api/people/${encodeURIComponent(name)}/photos`);
                 const data = await r.json();
                 this.personPhotos = data.photos || [];
+                // Fetch AI summary (non-blocking)
+                fetch(`/api/people/${encodeURIComponent(name)}/summary`).then(r => r.json()).then(d => { this.personSummary = d.summary; }).catch(() => {});
             } catch (e) { console.error('Person photos failed:', e); }
         },
 
@@ -311,6 +392,8 @@ function app() {
 
         async discoverGroups() {
             this.discoveringGroups = true;
+            this.aiBusy = true;
+            this.aiBusyLabel = 'Discovering document groups...';
             try {
                 const r = await fetch('/api/documents/discover', { method: 'POST' });
                 const data = await r.json();
@@ -322,6 +405,7 @@ function app() {
                 }
             } catch (e) { this.showToast('Discovery failed', 'error'); }
             this.discoveringGroups = false;
+            this.aiBusy = false;
         },
 
         // ─── Search ───────────────────────────────────────
@@ -341,16 +425,43 @@ function app() {
             this.chatMessages.push({ role: 'user', content: msg, timestamp: new Date().toISOString() });
             this.chatInput = '';
             this.chatLoading = true;
+            this.aiBusy = true;
+            this.aiBusyLabel = 'Thinking...';
             this.$nextTick(() => { const el = document.getElementById('chatMessages'); if (el) el.scrollTop = el.scrollHeight; });
             try {
-                const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg }) });
+                const r = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg }),
+                });
                 const data = r.ok ? await r.json() : null;
-                this.chatMessages.push({ role: 'assistant', content: data?.response || 'Something went wrong.', timestamp: new Date().toISOString() });
+                this.chatMessages.push({
+                    role: 'assistant',
+                    content: data?.response || 'Something went wrong.',
+                    timestamp: new Date().toISOString(),
+                });
             } catch (e) {
-                this.chatMessages.push({ role: 'assistant', content: 'Connection error.', timestamp: new Date().toISOString() });
+                this.chatMessages.push({
+                    role: 'assistant',
+                    content: 'Request failed. <button onclick="document.querySelector(\'[x-data]\')._x_dataStack[0].retryChat()" class="text-blue-500 underline">Retry</button>',
+                    timestamp: new Date().toISOString(),
+                    failed: true,
+                    retryMsg: msg,
+                });
             }
             this.chatLoading = false;
+            this.aiBusy = false;
             this.$nextTick(() => { const el = document.getElementById('chatMessages'); if (el) el.scrollTop = el.scrollHeight; });
+        },
+        retryChat() {
+            // Find the last failed message and retry
+            const lastFailed = [...this.chatMessages].reverse().find(m => m.failed);
+            if (lastFailed?.retryMsg) {
+                // Remove the error message
+                this.chatMessages = this.chatMessages.filter(m => m !== lastFailed);
+                this.chatInput = lastFailed.retryMsg;
+                this.sendChat();
+            }
         },
 
         // ─── Renames ──────────────────────────────────────
@@ -384,22 +495,30 @@ function app() {
         },
         async scanProjects() {
             this.projectsLoading = true;
+            this.aiBusy = true;
+            this.aiBusyLabel = 'Scanning projects...';
             try {
                 const data = await (await fetch('/api/projects/scan', { method: 'POST' })).json();
                 await this.loadProjects();
                 this.showToast(`Found ${data.scanned} projects`);
             } catch (e) { this.showToast('Scan failed', 'error'); }
             this.projectsLoading = false;
+            this.aiBusy = false;
         },
 
         // ─── Config ───────────────────────────────────────
         async loadConfig() {
-            try { this.configData = await (await fetch('/api/config')).json(); } catch (e) { }
+            try {
+                this.configData = await (await fetch('/api/config')).json();
+                // Fetch people list for identity picker
+                const p = await (await fetch('/api/people')).json();
+                this.settingsPeople = [...(p.named || []), ...(p.unnamed || [])].map(x => x.name);
+            } catch (e) { }
         },
         async saveConfig() {
             this.configSaving = true;
             try {
-                const body = { watch_folders: this.configData.watch_folders, project_directories: this.configData.project_directories, rename_enabled: this.configData.rename?.enabled, rename_auto_approve: this.configData.rename?.auto_approve, cleanup_threshold_days: this.configData.cleanup?.threshold_days, max_file_size_mb: this.configData.indexing?.max_file_size_mb };
+                const body = { watch_folders: this.configData.watch_folders, project_directories: this.configData.project_directories, rename_enabled: this.configData.rename?.enabled, rename_auto_approve: this.configData.rename?.auto_approve, cleanup_threshold_days: this.configData.cleanup?.threshold_days, max_file_size_mb: this.configData.indexing?.max_file_size_mb, user_identity: this.configData.user_identity || null };
                 const r = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                 if (r.ok) { this.showToast('Settings saved'); this.refreshStatus(); }
                 else this.showToast('Save failed', 'error');
@@ -435,12 +554,15 @@ function app() {
         async detectFaces(id) {
             if (!id) return;
             this.facesLoading = true;
+            this.aiBusy = true;
+            this.aiBusyLabel = 'Detecting faces...';
             try {
                 const data = await (await fetch(`/api/files/${id}/detect-faces`, { method: 'POST' })).json();
                 this.fileFaces = data.faces || [];
                 this.showToast(this.fileFaces.length > 0 ? `Found ${this.fileFaces.length} face(s)` : 'No faces detected', this.fileFaces.length > 0 ? 'success' : 'error');
             } catch (e) { this.showToast('Face detection failed', 'error'); }
             this.facesLoading = false;
+            this.aiBusy = false;
         },
         async loadFaces(id) {
             if (!id) return;
@@ -459,6 +581,91 @@ function app() {
             } catch (e) { }
         },
         isPlaceholderLabel(l) { return l && l.startsWith('Person '); },
+
+        // ─── Bulk Selection ───────────────────────────────
+        toggleSelectionMode() {
+            this.selectionMode = !this.selectionMode;
+            if (!this.selectionMode) this.selectedFiles = [];
+        },
+        toggleSelect(file) {
+            const idx = this.selectedFiles.findIndex(f => f.id === file.id);
+            if (idx >= 0) this.selectedFiles.splice(idx, 1);
+            else this.selectedFiles.push(file);
+        },
+        isSelected(id) {
+            return this.selectedFiles.some(f => f.id === id);
+        },
+        async bulkDelete() {
+            if (!this.selectedFiles.length) return;
+            if (!confirm(`Move ${this.selectedFiles.length} file(s) to Trash?`)) return;
+            this.aiBusy = true;
+            this.aiBusyLabel = `Deleting ${this.selectedFiles.length} file(s)...`;
+            try {
+                const ids = this.selectedFiles.map(f => f.id);
+                const r = await fetch('/api/files/bulk/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_ids: ids }),
+                });
+                if (r.ok) {
+                    const idSet = new Set(ids);
+                    this.photos = this.photos.filter(f => !idSet.has(f.id));
+                    this.searchResults = this.searchResults.filter(f => !idSet.has(f.id));
+                    this.activeDocFiles = this.activeDocFiles.filter(f => !idSet.has(f.id));
+                    this.selectedFiles = [];
+                    this.selectionMode = false;
+                    this.refreshStatus();
+                    this.showToast(`Moved ${ids.length} file(s) to Trash`);
+                }
+            } catch (e) { this.showToast('Delete failed', 'error'); }
+            this.aiBusy = false;
+        },
+        async bulkAddContext() {
+            if (!this.selectedFiles.length) return;
+            const context = prompt('Add context (comma-separated tags):');
+            if (!context?.trim()) return;
+            this.aiBusy = true;
+            this.aiBusyLabel = 'Adding context...';
+            try {
+                const ids = this.selectedFiles.map(f => f.id);
+                await fetch('/api/files/bulk/add-context', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_ids: ids, context: context.trim() }),
+                });
+                this.selectedFiles = [];
+                this.selectionMode = false;
+                this.showToast(`Context added to ${ids.length} file(s)`);
+            } catch (e) { this.showToast('Failed to add context', 'error'); }
+            this.aiBusy = false;
+        },
+        async bulkRename() {
+            if (this.selectedFiles.length !== 1) return;
+            const file = this.selectedFiles[0];
+            const newName = prompt('Enter new filename:', file.filename);
+            if (!newName?.trim() || newName.trim() === file.filename) return;
+            this.aiBusy = true;
+            this.aiBusyLabel = 'Renaming file...';
+            try {
+                const r = await fetch(`/api/files/${file.id}/rename`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_name: newName.trim() }),
+                });
+                if (r.ok) {
+                    this.selectedFiles = [];
+                    this.selectionMode = false;
+                    this.showToast('File renamed');
+                    // Refresh current view
+                    if (this.view === 'photos') this.loadPhotos(true);
+                    if (this.view === 'documents' && this.activeDocGroup) this.openDocGroup(this.activeDocGroup, this.activeDocGroupTag);
+                } else {
+                    const data = await r.json();
+                    this.showToast(data.detail || 'Rename failed', 'error');
+                }
+            } catch (e) { this.showToast('Rename failed', 'error'); }
+            this.aiBusy = false;
+        },
 
         // ─── File Actions ─────────────────────────────────
         async revealFile(id) {
@@ -488,6 +695,8 @@ function app() {
         async reindexAll() {
             if (!confirm('Re-index all files? This will re-analyze every file.')) return;
             this.reindexingAll = true;
+            this.aiBusy = true;
+            this.aiBusyLabel = 'Queuing files for re-indexing...';
             try {
                 const r = await fetch('/api/reindex-all', { method: 'POST' });
                 const data = await r.json();
@@ -495,6 +704,7 @@ function app() {
                 this.refreshStatus();
             } catch (e) { this.showToast('Re-index failed', 'error'); }
             this.reindexingAll = false;
+            this.aiBusy = false;
         },
 
         // ─── Helpers ──────────────────────────────────────

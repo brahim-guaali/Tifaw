@@ -133,18 +133,19 @@
     <!-- ═══════════════════════ MAIN CONTENT ═══════════════════════ -->
     <main class="flex-1 overflow-y-auto pt-14 lg:pt-0">
 
-        <!-- Indexing Progress Bar -->
-        <div x-show="status.queue_size > 0 || status.pending_files > 0" x-transition class="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-b border-gray-100 dark:border-gray-800 px-5 py-2.5">
+        <!-- Global Progress Bar (indexing or AI busy) -->
+        <div x-show="status.queue_size > 0 || status.pending_files > 0 || aiBusy || chatLoading" x-transition class="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-b border-gray-100 dark:border-gray-800 px-5 py-2.5">
             <div class="flex items-center gap-3">
                 <div class="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400">
                     <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                    <span>Indexing files...</span>
+                    <span x-text="aiBusy ? aiBusyLabel : (chatLoading ? 'AI is thinking...' : 'Indexing files...')"></span>
                 </div>
                 <div class="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                    <div class="h-full bg-blue-500 rounded-full transition-all duration-500 indexing-progress"
-                         :style="'width:' + (status.total_files > 0 ? Math.round((status.indexed_files / status.total_files) * 100) : 0) + '%'"></div>
+                    <div class="h-full rounded-full transition-all duration-500 indexing-progress"
+                         :class="(aiBusy || chatLoading) ? 'bg-amber-500' : 'bg-blue-500'"
+                         :style="(aiBusy || chatLoading) ? 'width:100%' : ('width:' + (status.total_files > 0 ? Math.round((status.indexed_files / status.total_files) * 100) : 0) + '%')"></div>
                 </div>
-                <span class="text-xs text-gray-400 whitespace-nowrap">
+                <span x-show="!aiBusy && !chatLoading" class="text-xs text-gray-400 whitespace-nowrap">
                     <span x-text="status.indexed_files"></span> / <span x-text="status.total_files"></span>
                     <span class="text-gray-300 dark:text-gray-600 mx-1">|</span>
                     <span x-text="status.queue_size || status.pending_files"></span> remaining
@@ -157,7 +158,7 @@
             <template x-if="overview">
                 <div>
                     <!-- Hero -->
-                    <div class="hero-enter bg-gradient-to-b from-blue-50 via-white to-white dark:from-blue-950/30 dark:via-gray-950 dark:to-gray-950 px-6 sm:px-10 pt-10 pb-8">
+                    <div class="hero-enter bg-gradient-to-b from-blue-50 via-white to-white dark:from-blue-950/30 dark:via-gray-950 dark:to-gray-950 px-6 sm:px-10 pt-6 pb-8">
                         <p class="text-sm font-medium text-blue-500 dark:text-blue-400 mb-2">Your Digital Life</p>
                         <h1 class="text-3xl sm:text-4xl font-bold tracking-tight leading-tight mb-3">
                             Your laptop holds
@@ -166,6 +167,19 @@
                             <span class="text-gray-400 dark:text-gray-500 text-xl sm:text-2xl font-normal" x-text="'spanning ' + overview.year_span.years + ' years of your digital life'"></span>
                         </h1>
                         <p class="text-sm text-gray-500 dark:text-gray-400" x-text="formatSize(overview.total_size) + ' across ' + overview.folders.length + ' folders'"></p>
+                        <!-- AI Narrative -->
+                        <p x-show="aiNarrative" class="mt-4 text-sm text-gray-600 dark:text-gray-300 leading-relaxed max-w-2xl privacy-blur" x-text="aiNarrative"></p>
+                    </div>
+
+                    <!-- Weekly Digest -->
+                    <div x-show="aiDigest" class="px-6 sm:px-10 mt-4 mb-6">
+                        <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5 flex items-start gap-3">
+                            <div class="text-xl flex-shrink-0">&#x1F4CB;</div>
+                            <div class="min-w-0">
+                                <div class="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1">This Week</div>
+                                <p class="text-sm text-gray-600 dark:text-gray-300 privacy-blur leading-relaxed" x-text="aiDigest"></p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Top Stats Cards -->
@@ -357,6 +371,28 @@
                         </div>
                     </div>
 
+                    <!-- Photo Stories -->
+                    <div class="px-6 sm:px-10 mt-8" x-show="photoStories && photoStories.length > 0">
+                        <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Photo stories</h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <template x-for="story in photoStories" :key="story.title">
+                                <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 overflow-hidden card-lift cursor-pointer" @click="openPhotoStory(story)">
+                                    <div class="aspect-video bg-gray-100 dark:bg-gray-900 overflow-hidden">
+                                        <img :src="'/api/files/'+story.sample_id+'/preview'" class="w-full h-full object-cover" loading="lazy" onerror="this.parentElement.style.display='none'">
+                                    </div>
+                                    <div class="p-3">
+                                        <div class="text-sm font-semibold privacy-blur" x-text="story.title"></div>
+                                        <div class="text-[11px] text-gray-400 mt-0.5">
+                                            <span x-text="story.count + ' photos'"></span>
+                                            <span x-show="story.city" x-text="' \u00B7 ' + story.city"></span>
+                                            <span x-show="story.people?.length" x-text="' \u00B7 ' + story.people.join(', ')" class="privacy-blur"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
                     <!-- Recent -->
                     <div class="px-6 sm:px-10 mt-8 pb-10">
                         <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Recently analyzed</h2>
@@ -384,7 +420,10 @@
         <!-- ▸▸▸ PHOTOS ▸▸▸ -->
         <div x-show="view==='photos'" class="h-full flex flex-col">
             <div class="px-6 sm:px-10 pt-6 pb-4">
-                <h1 class="text-2xl font-bold tracking-tight mb-4">Photos</h1>
+                <div class="flex items-center justify-between mb-4">
+                    <h1 class="text-2xl font-bold tracking-tight">Photos</h1>
+                    <button @click="toggleSelectionMode()" class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors" :class="selectionMode ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'" x-text="selectionMode ? 'Cancel' : 'Select'"></button>
+                </div>
                 <!-- People filter -->
                 <div x-show="photosFilters.people.length > 0" class="scroll-fade flex gap-2 pb-3">
                     <button @click="filterPhotosByPerson(null)" class="flex-shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors" :class="!photosActivePerson ? 'bg-blue-500 text-white border-blue-500' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'">All</button>
@@ -405,10 +444,13 @@
             <div class="flex-1 overflow-y-auto px-6 sm:px-10 pb-6" @scroll="onPhotosScroll($event)">
                 <div class="masonry-grid">
                     <template x-for="photo in photos" :key="photo.id">
-                        <div @click="selectedFile=photo" class="photo-card card-enter">
+                        <div @click="selectionMode ? toggleSelect(photo) : (selectedFile=photo)" class="photo-card card-enter relative" :class="isSelected(photo.id) && 'ring-3 ring-blue-500 ring-offset-2 rounded-lg'">
+                            <div x-show="selectionMode" class="absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center" :class="isSelected(photo.id) ? 'bg-blue-500' : 'bg-black/30'">
+                                <svg x-show="isSelected(photo.id)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" d="M5 13l4 4L19 7"/></svg>
+                            </div>
                             <img :src="'/api/files/'+photo.id+'/preview'" class="w-full" loading="lazy" onerror="this.parentElement.remove()">
                             <div class="photo-overlay">
-                                <span class="text-white text-[11px] truncate" x-text="photo.filename"></span>
+                                <span class="text-white text-[11px] truncate privacy-blur" x-text="photo.filename"></span>
                             </div>
                         </div>
                     </template>
@@ -439,6 +481,8 @@
                     <button @click="renamePersonPrompt()" class="text-xs text-blue-500 hover:text-blue-400 font-medium">Rename</button>
                     <button @click="openMergePicker()" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium">Merge with...</button>
                 </div>
+                <!-- Person AI Summary -->
+                <p x-show="personSummary" class="text-sm text-gray-500 dark:text-gray-400 mt-2 privacy-blur" x-text="personSummary"></p>
             </div>
 
             <!-- Merge Picker Modal -->
@@ -468,7 +512,7 @@
             <!-- Person's photos -->
             <div x-show="activePerson" class="masonry-grid">
                 <template x-for="photo in personPhotos" :key="photo.id">
-                    <div @click="selectedFile=photo" class="photo-card card-enter">
+                    <div @click="selectionMode ? toggleSelect(photo) : (selectedFile=photo)" class="photo-card card-enter relative" :class="isSelected(photo.id) && 'ring-3 ring-blue-500 ring-offset-2 rounded-lg'">
                         <img :src="'/api/files/'+photo.id+'/preview'" class="w-full" loading="lazy">
                     </div>
                 </template>
@@ -596,13 +640,16 @@
 
         <!-- ▸▸▸ SEARCH ▸▸▸ -->
         <div x-show="view==='search'" class="p-6 sm:p-10">
-            <div class="relative mb-6">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="relative flex-1">
                 <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
                 <input type="text" class="w-full pl-12 pr-5 py-4 bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 rounded-2xl text-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder:text-gray-400" placeholder="Search everything..." x-model="searchQuery" @input.debounce.300ms="performSearch()" autofocus>
+                </div>
+                <button x-show="searchResults.length > 0" @click="toggleSelectionMode()" class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex-shrink-0 self-center" :class="selectionMode ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'" x-text="selectionMode ? 'Cancel' : 'Select'"></button>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <template x-for="file in searchResults" :key="file.id">
-                    <div @click="selectedFile=file" class="card-lift bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden cursor-pointer">
+                    <div @click="selectionMode ? toggleSelect(file) : (selectedFile=file)" class="card-lift bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden cursor-pointer relative" :class="isSelected(file.id) && 'ring-3 ring-blue-500 ring-offset-2'">
                         <div x-show="isPreviewable(file.extension)" class="aspect-video bg-gray-100 dark:bg-gray-900 overflow-hidden">
                             <img x-show="isImage(file.extension)" :src="'/api/files/'+file.id+'/preview'" class="w-full h-full object-cover" loading="lazy" onerror="this.parentElement.style.display='none'">
                         </div>
@@ -708,6 +755,17 @@
                     <button @click="openFolderPicker('project_directories')" class="flex items-center gap-2 w-full px-3 py-2.5 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg text-sm text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>Add directory</button>
                 </div>
             </div>
+            <!-- User Identity -->
+            <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5 mb-4">
+                <h2 class="text-sm font-semibold mb-0.5">Who are you?</h2>
+                <p class="text-xs text-gray-400 mb-3">Select which person you are so Tifaw can address you by name.</p>
+                <select @change="configData.user_identity = $event.target.value" class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:border-blue-500 transition-colors">
+                    <option value="" :selected="!configData.user_identity">Not set</option>
+                    <template x-for="p in settingsPeople" :key="p">
+                        <option :value="p" :selected="configData.user_identity === p" x-text="p"></option>
+                    </template>
+                </select>
+            </div>
             <!-- Toggles -->
             <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5 mb-4">
                 <h2 class="text-sm font-semibold mb-3">Smart Rename</h2>
@@ -733,6 +791,18 @@
         </div>
 
     </main>
+
+    <!-- ═══════════════════════ BULK ACTION TOOLBAR ═══════════════════════ -->
+    <div x-show="selectedFiles.length > 0" x-transition class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] bg-gray-900 dark:bg-gray-800 text-white rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-4">
+        <span class="text-sm font-medium" x-text="selectedFiles.length + ' selected'"></span>
+        <div class="w-px h-5 bg-gray-700"></div>
+        <button @click="bulkAddContext()" class="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">Add Context</button>
+        <button x-show="selectedFiles.length === 1" @click="bulkRename()" class="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">Rename</button>
+        <button @click="bulkDelete()" class="text-xs px-3 py-1.5 bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors">Delete</button>
+        <button @click="selectedFiles=[]; selectionMode=false" class="text-xs text-gray-400 hover:text-white transition-colors ml-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+    </div>
 
     <!-- ═══════════════════════ FILE DETAIL MODAL ═══════════════════════ -->
     <div x-show="selectedFile" x-transition class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="selectedFile=null">
