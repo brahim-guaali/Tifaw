@@ -23,14 +23,27 @@ class ConfigUpdate(BaseModel):
     cleanup_threshold_days: int | None = None
     max_file_size_mb: int | None = None
     supported_extensions: list[str] | None = None
+    user_identity: str | None = None
 
 
 @router.get("/config")
 async def get_config():
     if not CONFIG_PATH.exists():
-        return {}
-    with open(CONFIG_PATH) as f:
-        return yaml.safe_load(f) or {}
+        config = {}
+    else:
+        with open(CONFIG_PATH) as f:
+            config = yaml.safe_load(f) or {}
+
+    # Load user identity from DB
+    try:
+        from tifaw.main import db
+        cursor = await db.db.execute("SELECT value FROM settings WHERE key='user_identity'")
+        row = await cursor.fetchone()
+        config["user_identity"] = row["value"] if row else None
+    except Exception:
+        config["user_identity"] = None
+
+    return config
 
 
 @router.put("/config")
@@ -57,6 +70,18 @@ async def update_config(update: ConfigUpdate):
         config.setdefault("indexing", {})["max_file_size_mb"] = update.max_file_size_mb
     if update.supported_extensions is not None:
         config.setdefault("indexing", {})["supported_extensions"] = update.supported_extensions
+
+    # Save user identity to DB settings (not config.yaml)
+    if update.user_identity is not None:
+        from tifaw.main import db
+        await db.db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ("user_identity", update.user_identity),
+        )
+        # Clear cached narrative so it regenerates with the new identity
+        await db.db.execute("DELETE FROM settings WHERE key='ai_narrative'")
+        await db.db.execute("DELETE FROM settings WHERE key='ai_digest'")
+        await db.db.commit()
 
     # Write back
     with open(CONFIG_PATH, "w") as f:
