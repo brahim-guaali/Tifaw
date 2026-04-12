@@ -66,16 +66,63 @@ async def analyze_project(project_path: Path, llm: OllamaClient) -> ProjectInfo:
                 pass
             break
 
+    # Read dependency files for richer analysis
+    deps_text = ""
+    dep_files = {
+        "package.json": "Node.js",
+        "requirements.txt": "Python",
+        "Pipfile": "Python",
+        "pyproject.toml": "Python",
+        "Cargo.toml": "Rust",
+        "go.mod": "Go",
+        "Gemfile": "Ruby",
+        "pom.xml": "Java",
+        "build.gradle": "Java/Kotlin",
+        "composer.json": "PHP",
+    }
+    detected_stack = []
+    for dep_file, lang in dep_files.items():
+        dep_path = project_path / dep_file
+        if dep_path.exists():
+            detected_stack.append(lang)
+            try:
+                deps_text += f"\n--- {dep_file} ---\n{dep_path.read_text(errors='replace')[:500]}\n"
+            except OSError:
+                pass
+
+    info["stack"] = ", ".join(sorted(set(detected_stack))) if detected_stack else None
+
+    # Combined LLM analysis with README + deps
+    analysis_input = ""
     if readme_text:
+        analysis_input += f"README:\n{readme_text}\n\n"
+    if deps_text:
+        analysis_input += f"Dependencies:\n{deps_text}\n\n"
+
+    if analysis_input:
         try:
-            prompt = (
-                "Based on this README, provide a single-sentence description of what "
-                "this project does. Be concise and specific.\n\n"
-                f"README:\n{readme_text}"
+            import json as _json
+            result = await llm.generate_json(
+                prompt=f"Analyze this software project:\n\n{analysis_input}\n\nProject name: {project_path.name}",
+                system='Respond with ONLY JSON: {"description": "1-sentence description", "frameworks": ["framework1", "framework2"], "type": "web app/CLI/library/API/mobile/etc", "health": "active/maintained/stale/abandoned"}',
             )
-            description = await llm.generate(prompt, temperature=0.2)
-            info["description"] = description.strip()
+            info["description"] = result.get("description", info.get("description"))
+            frameworks = result.get("frameworks", [])
+            if frameworks:
+                info["stack"] = ", ".join(frameworks)
+            info["project_type"] = result.get("type")
+            info["health"] = result.get("health")
         except Exception as exc:
             logger.warning("LLM analysis failed for %s: %s", project_path.name, exc)
+            # Fallback to simple README description
+            if readme_text:
+                try:
+                    description = await llm.generate(
+                        f"Based on this README, provide a single-sentence description:\n\n{readme_text}",
+                        temperature=0.2,
+                    )
+                    info["description"] = description.strip()
+                except Exception:
+                    pass
 
     return info
