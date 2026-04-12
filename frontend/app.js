@@ -48,11 +48,16 @@ function app() {
         // Config
         configData: {},
         configSaving: false,
+        reindexingAll: false,
 
         // Faces
         fileFaces: [],
         facesLoading: false,
         labelInput: {},
+
+        // Merge picker
+        mergePickerOpen: false,
+        mergePickerList: [],
 
         // File detail
         selectedFile: null,
@@ -122,6 +127,10 @@ function app() {
             try {
                 const r = await fetch('/api/overview');
                 this.overview = await r.json();
+                this.$nextTick(() => {
+                    if (this.overview.photo_locations?.length) this.initMap(this.overview.photo_locations);
+                    if (this.overview.calendar_heatmap) this.renderHeatmap(this.overview.calendar_heatmap);
+                });
             } catch (e) {
                 console.error('Overview failed:', e);
             }
@@ -231,19 +240,23 @@ function app() {
             } catch (e) { this.showToast('Rename failed', 'error'); }
         },
 
-        async mergePersonPrompt() {
+        openMergePicker() {
             if (!this.activePerson) return;
-            const otherName = prompt(`Merge "${this.activePerson}" with which person?\nType the exact name (e.g. "Person 42"):`);
-            if (!otherName || otherName.trim() === this.activePerson) return;
+            const all = [...(this.people.named || []), ...(this.people.unnamed || [])];
+            this.mergePickerList = all.filter(p => p.name !== this.activePerson);
+            this.mergePickerOpen = true;
+        },
+        async mergePerson(otherName) {
+            if (!otherName || otherName === this.activePerson) return;
+            this.mergePickerOpen = false;
             try {
-                // Rename the other person's faces to this person's name
-                const r = await fetch(`/api/people/${encodeURIComponent(otherName.trim())}/rename`, {
+                const r = await fetch(`/api/people/${encodeURIComponent(otherName)}/rename`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ label: this.activePerson }),
                 });
                 const data = await r.json();
-                this.showToast(`Merged ${otherName.trim()} into ${this.activePerson} (${data.faces_updated} photos merged)`);
+                this.showToast(`Merged ${otherName} into ${this.activePerson} (${data.faces_updated} photos merged)`);
                 await this.showPersonPhotos(this.activePerson);
                 this.loadPeople();
             } catch (e) { this.showToast('Merge failed', 'error'); }
@@ -439,6 +452,17 @@ function app() {
             this.selectedFile = null;
             this.showToast('Queued for re-indexing');
         },
+        async reindexAll() {
+            if (!confirm('Re-index all files? This will re-analyze every file.')) return;
+            this.reindexingAll = true;
+            try {
+                const r = await fetch('/api/reindex-all', { method: 'POST' });
+                const data = await r.json();
+                this.showToast(`Queued ${data.queued} files for re-indexing`);
+                this.refreshStatus();
+            } catch (e) { this.showToast('Re-index failed', 'error'); }
+            this.reindexingAll = false;
+        },
 
         // ─── Helpers ──────────────────────────────────────
         isImage(ext) { return ['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp'].includes(ext); },
@@ -453,6 +477,109 @@ function app() {
         renderMarkdown(text) {
             if (!text) return '';
             try { return marked.parse(text); } catch { return text; }
+        },
+
+        renderChatContent(text) {
+            if (!text) return '';
+            try {
+                // Parse markdown first
+                let html = marked.parse(text);
+                // The LLM may output photo grid HTML directly — it passes through marked
+                return html;
+            } catch { return text; }
+        },
+
+        // Donut chart gradient from categories
+        donutGradient(categories, total) {
+            if (!categories || !total) return '';
+            let angle = 0;
+            const stops = [];
+            const colors = {
+                Images: '#60a5fa', Documents: '#34d399', Personal: '#f472b6',
+                Screenshots: '#9ca3af', Work: '#818cf8', Code: '#a78bfa',
+                Media: '#fb923c', Education: '#fbbf24', Legal: '#f87171',
+                Finance: '#4ade80', Invoices: '#2dd4bf', Receipts: '#a3e635',
+                Medical: '#e879f9', Archives: '#94a3b8', Other: '#cbd5e1',
+            };
+            for (const cat of categories) {
+                const pct = (cat.count / total) * 360;
+                const color = colors[cat.name] || '#cbd5e1';
+                stops.push(`${color} ${angle}deg ${angle + pct}deg`);
+                angle += pct;
+            }
+            return `background: conic-gradient(${stops.join(', ')})`;
+        },
+
+        // Photo map (Leaflet)
+        _map: null,
+        initMap(locations) {
+            if (!locations || !locations.length) return;
+            if (typeof L === 'undefined') return;
+            this.$nextTick(() => {
+                const el = document.getElementById('photo-map');
+                if (!el) return;
+                if (this._map) { this._map.remove(); this._map = null; }
+                const map = L.map(el, { scrollWheelZoom: false });
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap',
+                    maxZoom: 18,
+                }).addTo(map);
+                const bounds = [];
+                for (const loc of locations) {
+                    if (loc.lat && loc.lng) {
+                        const ll = [loc.lat, loc.lng];
+                        bounds.push(ll);
+                        L.circleMarker(ll, {
+                            radius: 5, fillColor: '#3b82f6', color: '#fff',
+                            weight: 1.5, fillOpacity: 0.85
+                        }).addTo(map).bindPopup(`<div style="text-align:center"><img src="/api/files/${loc.id}/preview" style="width:160px;height:120px;object-fit:cover;border-radius:6px" loading="lazy"><div style="font-size:11px;margin-top:4px;color:#666">${loc.filename}</div></div>`, {minWidth: 170});
+                    }
+                }
+                if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 });
+                this._map = map;
+            });
+        },
+
+        // Calendar heatmap
+        renderHeatmap(data) {
+            if (!data) return;
+            this.$nextTick(() => {
+                const el = this.$refs.heatmap;
+                if (!el) return;
+                const today = new Date();
+                const oneYearAgo = new Date(today);
+                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                // Start from the Sunday of the week of oneYearAgo
+                const start = new Date(oneYearAgo);
+                start.setDate(start.getDate() - start.getDay());
+
+                const maxCount = Math.max(1, ...Object.values(data));
+                const weeks = [];
+                const d = new Date(start);
+                let week = [];
+                while (d <= today) {
+                    const key = d.toISOString().slice(0, 10);
+                    const count = data[key] || 0;
+                    let level = 0;
+                    if (count > 0) level = Math.min(3, Math.ceil((count / maxCount) * 3));
+                    week.push({ date: key, count, level });
+                    if (week.length === 7) { weeks.push(week); week = []; }
+                    d.setDate(d.getDate() + 1);
+                }
+                if (week.length) weeks.push(week);
+
+                let html = '<div class="flex gap-[3px]">';
+                for (const w of weeks) {
+                    html += '<div class="flex flex-col gap-[3px]">';
+                    for (const cell of w) {
+                        const cls = ['heatmap-0','heatmap-1','heatmap-2','heatmap-3'][cell.level];
+                        html += `<div class="w-2.5 h-2.5 rounded-sm ${cls}" title="${cell.date}: ${cell.count} files"></div>`;
+                    }
+                    html += '</div>';
+                }
+                html += '</div>';
+                el.innerHTML = html;
+            });
         },
 
         // Storage bar colors

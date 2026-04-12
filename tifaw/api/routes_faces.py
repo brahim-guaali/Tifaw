@@ -101,7 +101,7 @@ async def delete_face(face_id: int):
     from tifaw.main import db
 
     cursor = await db.db.execute(
-        "SELECT thumbnail_path FROM faces WHERE id=?", (face_id,)
+        "SELECT thumbnail_path, label FROM faces WHERE id=?", (face_id,)
     )
     face = await cursor.fetchone()
     if not face:
@@ -113,7 +113,19 @@ async def delete_face(face_id: int):
         if thumb.exists():
             thumb.unlink()
 
+    label = face["label"]
     await db.db.execute("DELETE FROM faces WHERE id=?", (face_id,))
+    # Clean up known_people if no faces remain for this person
+    if label:
+        remaining = (await (await db.db.execute(
+            "SELECT COUNT(*) as c FROM faces WHERE label=?", (label,)
+        )).fetchone())["c"]
+        if remaining == 0:
+            await db.db.execute("DELETE FROM known_people WHERE name=?", (label,))
+        else:
+            await db.db.execute(
+                "UPDATE known_people SET face_count=? WHERE name=?", (remaining, label)
+            )
     await db.db.commit()
 
     return {"status": "deleted", "face_id": face_id}
@@ -153,13 +165,16 @@ async def rename_person(old_name: str, body: LabelRequest):
     )
     count = result.rowcount
 
-    # Update known_people
+    # Update known_people — recount for accuracy
     await db.db.execute("DELETE FROM known_people WHERE name=?", (old_name,))
+    new_count = (await (await db.db.execute(
+        "SELECT COUNT(*) as c FROM faces WHERE label=?", (new_name,)
+    )).fetchone())["c"]
     await db.db.execute(
         """INSERT INTO known_people (name, face_count)
         VALUES (?, ?)
-        ON CONFLICT(name) DO UPDATE SET face_count = face_count + ?""",
-        (new_name, count, count),
+        ON CONFLICT(name) DO UPDATE SET face_count = ?""",
+        (new_name, new_count, new_count),
     )
     await db.db.commit()
 
@@ -209,6 +224,12 @@ async def list_people():
 
     d = db.db
 
+    # Clean up known_people with no faces
+    await d.execute(
+        "DELETE FROM known_people WHERE name NOT IN (SELECT DISTINCT label FROM faces WHERE label IS NOT NULL)"
+    )
+    await d.commit()
+
     # Named people (user-labeled, not "Person N" placeholders)
     named_rows = await (await d.execute(
         """SELECT label as name, COUNT(*) as face_count,
@@ -217,12 +238,14 @@ async def list_people():
         GROUP BY label ORDER BY face_count DESC"""
     )).fetchall()
 
-    # Unnamed people (auto-labeled placeholders)
+    # Unnamed people (auto-labeled placeholders) — only those with faces linked to existing files
     unnamed_rows = await (await d.execute(
-        """SELECT label as name, COUNT(*) as face_count,
-           MIN(faces.id) as face_id, COUNT(DISTINCT file_id) as photo_count
-        FROM faces WHERE label LIKE 'Person %'
-        GROUP BY label ORDER BY face_count DESC"""
+        """SELECT fa.label as name, COUNT(*) as face_count,
+           MIN(fa.id) as face_id, COUNT(DISTINCT fa.file_id) as photo_count
+        FROM faces fa
+        JOIN files f ON f.id = fa.file_id
+        WHERE fa.label LIKE 'Person %'
+        GROUP BY fa.label ORDER BY face_count DESC"""
     )).fetchall()
 
     return {

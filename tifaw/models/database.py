@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS files (
     rename_status TEXT,
     original_name TEXT,
     thumbnail_path TEXT,
+    metadata TEXT,
     created_at TEXT,
     modified_at TEXT,
     indexed_at TEXT
@@ -144,6 +145,7 @@ class Database:
         """Add columns that may be missing from older schemas."""
         migrations = [
             ("faces", "descriptor", "ALTER TABLE faces ADD COLUMN descriptor TEXT"),
+            ("files", "metadata", "ALTER TABLE files ADD COLUMN metadata TEXT"),
         ]
         for table, column, sql in migrations:
             try:
@@ -176,15 +178,19 @@ class Database:
         watch_folder: str | None,
         created_at: str | None = None,
         modified_at: str | None = None,
+        metadata: str | None = None,
     ) -> int:
         await self.db.execute(
-            """INSERT INTO files (path, filename, extension, size_bytes, file_hash, watch_folder, created_at, modified_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """INSERT INTO files (path, filename, extension, size_bytes, file_hash, watch_folder,
+                created_at, modified_at, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(path) DO UPDATE SET
                 filename=excluded.filename, size_bytes=excluded.size_bytes,
-                file_hash=excluded.file_hash, modified_at=excluded.modified_at
+                file_hash=excluded.file_hash, modified_at=excluded.modified_at,
+                metadata=excluded.metadata
             """,
-            (path, filename, extension, size_bytes, file_hash, watch_folder, created_at, modified_at),
+            (path, filename, extension, size_bytes, file_hash, watch_folder,
+             created_at, modified_at, metadata),
         )
         await self.db.commit()
         cursor = await self.db.execute("SELECT id FROM files WHERE path = ?", (path,))

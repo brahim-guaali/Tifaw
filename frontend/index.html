@@ -17,6 +17,8 @@
         }
     };
     </script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="/styles.css">
     <script>
     (function(){ if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark'); })();
@@ -115,6 +117,25 @@
     <!-- ═══════════════════════ MAIN CONTENT ═══════════════════════ -->
     <main class="flex-1 overflow-y-auto pt-14 lg:pt-0">
 
+        <!-- Indexing Progress Bar -->
+        <div x-show="status.queue_size > 0 || status.pending_files > 0" x-transition class="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-b border-gray-100 dark:border-gray-800 px-5 py-2.5">
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400">
+                    <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                    <span>Indexing files...</span>
+                </div>
+                <div class="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-blue-500 rounded-full transition-all duration-500 indexing-progress"
+                         :style="'width:' + (status.total_files > 0 ? Math.round((status.indexed_files / status.total_files) * 100) : 0) + '%'"></div>
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">
+                    <span x-text="status.indexed_files"></span> / <span x-text="status.total_files"></span>
+                    <span class="text-gray-300 dark:text-gray-600 mx-1">|</span>
+                    <span x-text="status.queue_size || status.pending_files"></span> remaining
+                </span>
+            </div>
+        </div>
+
         <!-- ▸▸▸ OVERVIEW ▸▸▸ -->
         <div x-show="view==='overview'" class="min-h-screen">
             <template x-if="overview">
@@ -129,6 +150,47 @@
                             <span class="text-gray-400 dark:text-gray-500 text-xl sm:text-2xl font-normal" x-text="'spanning ' + overview.year_span.years + ' years of your digital life'"></span>
                         </h1>
                         <p class="text-sm text-gray-500 dark:text-gray-400" x-text="formatSize(overview.total_size) + ' across ' + overview.folders.length + ' folders'"></p>
+                    </div>
+
+                    <!-- Top Stats Cards -->
+                    <div class="px-6 sm:px-10 -mt-2 mb-6" x-show="overview.top_stats && Object.keys(overview.top_stats).length > 0">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                            <template x-if="overview.top_stats.busiest_month">
+                                <div class="bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 p-3.5">
+                                    <div class="text-lg mb-1">&#x1F4C5;</div>
+                                    <div class="text-sm font-bold truncate" x-text="overview.top_stats.busiest_month.month"></div>
+                                    <div class="text-[11px] text-gray-400">Busiest month</div>
+                                </div>
+                            </template>
+                            <template x-if="overview.top_stats.most_seen_person">
+                                <div class="bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 p-3.5">
+                                    <div class="text-lg mb-1">&#x1F464;</div>
+                                    <div class="text-sm font-bold truncate" x-text="overview.top_stats.most_seen_person.name"></div>
+                                    <div class="text-[11px] text-gray-400" x-text="overview.top_stats.most_seen_person.count + ' photos'"></div>
+                                </div>
+                            </template>
+                            <template x-if="overview.top_stats.oldest_file">
+                                <div class="bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 p-3.5">
+                                    <div class="text-lg mb-1">&#x1F4C2;</div>
+                                    <div class="text-sm font-bold truncate" x-text="overview.top_stats.oldest_file.date"></div>
+                                    <div class="text-[11px] text-gray-400">Oldest file</div>
+                                </div>
+                            </template>
+                            <template x-if="overview.top_stats.largest_file">
+                                <div class="bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 p-3.5">
+                                    <div class="text-lg mb-1">&#x1F4BE;</div>
+                                    <div class="text-sm font-bold truncate" x-text="formatSize(overview.top_stats.largest_file.size)"></div>
+                                    <div class="text-[11px] text-gray-400">Largest file</div>
+                                </div>
+                            </template>
+                            <template x-if="overview.top_stats.top_camera">
+                                <div class="bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 p-3.5">
+                                    <div class="text-lg mb-1">&#x1F4F7;</div>
+                                    <div class="text-sm font-bold truncate" x-text="overview.top_stats.top_camera.name"></div>
+                                    <div class="text-[11px] text-gray-400" x-text="overview.top_stats.top_camera.count + ' photos'"></div>
+                                </div>
+                            </template>
+                        </div>
                     </div>
 
                     <!-- Story Cards -->
@@ -181,6 +243,46 @@
                         </div>
                     </div>
 
+                    <!-- Category Donut Chart -->
+                    <div class="px-6 sm:px-10 mt-8" x-show="overview.categories.length > 0">
+                        <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">File categories</h2>
+                        <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5">
+                            <div class="flex flex-col sm:flex-row items-center gap-6">
+                                <div class="relative w-40 h-40 flex-shrink-0">
+                                    <div class="w-full h-full rounded-full" :style="donutGradient(overview.categories, overview.total_files)"></div>
+                                    <div class="absolute inset-0 flex items-center justify-center">
+                                        <div class="w-20 h-20 rounded-full bg-white dark:bg-gray-800/90 flex items-center justify-center">
+                                            <div class="text-center">
+                                                <div class="text-lg font-bold" x-text="overview.total_files.toLocaleString()"></div>
+                                                <div class="text-[10px] text-gray-400">files</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex-1 grid grid-cols-2 gap-x-6 gap-y-2">
+                                    <template x-for="cat in overview.categories.slice(0, 10)" :key="cat.name">
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" :class="catColor(cat.name)"></div>
+                                            <span class="text-xs text-gray-600 dark:text-gray-300 truncate" x-text="cat.name"></span>
+                                            <span class="text-xs text-gray-400 ml-auto" x-text="Math.round(cat.count / overview.total_files * 100) + '%'"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Photo Map -->
+                    <div class="px-6 sm:px-10 mt-8" x-show="overview.photo_locations && overview.photo_locations.length > 0">
+                        <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Where your photos were taken</h2>
+                        <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 overflow-hidden">
+                            <div id="photo-map" class="h-72 sm:h-80 w-full" x-init="$watch('overview.photo_locations', val => { if (val && val.length) initMap(val) })"></div>
+                            <div class="px-5 py-2.5 border-t border-gray-100 dark:border-gray-700/50 text-xs text-gray-400">
+                                <span x-text="overview.photo_locations.length"></span> geotagged photos
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Timeline -->
                     <div class="px-6 sm:px-10 mt-8" x-show="overview.timeline.length > 0">
                         <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Activity over time</h2>
@@ -195,6 +297,46 @@
                             <div class="flex justify-between mt-2 text-[10px] text-gray-400">
                                 <span x-text="overview.timeline[0]?.month"></span>
                                 <span x-text="overview.timeline[overview.timeline.length-1]?.month"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Calendar Heatmap -->
+                    <div class="px-6 sm:px-10 mt-8" x-show="overview.calendar_heatmap && Object.keys(overview.calendar_heatmap).length > 0">
+                        <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Daily activity (past year)</h2>
+                        <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5 overflow-x-auto">
+                            <div class="heatmap-grid" x-init="$watch('overview.calendar_heatmap', val => { if (val) renderHeatmap(val) })" x-ref="heatmap"></div>
+                            <div class="flex items-center justify-end gap-1.5 mt-3 text-[10px] text-gray-400">
+                                <span>Less</span>
+                                <div class="w-2.5 h-2.5 rounded-sm bg-gray-100 dark:bg-gray-800"></div>
+                                <div class="w-2.5 h-2.5 rounded-sm bg-blue-200 dark:bg-blue-900"></div>
+                                <div class="w-2.5 h-2.5 rounded-sm bg-blue-400 dark:bg-blue-600"></div>
+                                <div class="w-2.5 h-2.5 rounded-sm bg-blue-600 dark:bg-blue-400"></div>
+                                <span>More</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- People Co-occurrence -->
+                    <div class="px-6 sm:px-10 mt-8" x-show="overview.people_cooccurrence && overview.people_cooccurrence.length > 0">
+                        <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Often seen together</h2>
+                        <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5">
+                            <div class="space-y-2.5">
+                                <template x-for="pair in overview.people_cooccurrence" :key="pair.person_a + pair.person_b">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2 text-sm">
+                                            <span class="font-medium" x-text="pair.person_a"></span>
+                                            <span class="text-gray-300 dark:text-gray-600">&</span>
+                                            <span class="font-medium" x-text="pair.person_b"></span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-20 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                                <div class="h-full bg-pink-400 rounded-full" :style="'width:' + Math.min(100, pair.together / (overview.people_cooccurrence[0]?.together || 1) * 100) + '%'"></div>
+                                            </div>
+                                            <span class="text-xs text-gray-400 w-16 text-right" x-text="pair.together + ' photos'"></span>
+                                        </div>
+                                    </div>
+                                </template>
                             </div>
                         </div>
                     </div>
@@ -279,7 +421,31 @@
                     <h2 class="text-lg font-semibold" x-text="activePerson"></h2>
                     <span class="text-xs text-gray-400" x-text="personPhotos.length + ' photos'"></span>
                     <button @click="renamePersonPrompt()" class="text-xs text-blue-500 hover:text-blue-400 font-medium">Rename</button>
-                    <button @click="mergePersonPrompt()" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium">Merge with...</button>
+                    <button @click="openMergePicker()" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium">Merge with...</button>
+                </div>
+            </div>
+
+            <!-- Merge Picker Modal -->
+            <div x-show="mergePickerOpen" x-transition class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="mergePickerOpen=false">
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-sm shadow-2xl" x-show="mergePickerOpen" x-transition.scale.95>
+                    <div class="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                        <h3 class="text-sm font-semibold">Merge <span x-text="activePerson"></span> with...</h3>
+                        <button @click="mergePickerOpen=false" class="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                    </div>
+                    <div class="max-h-72 overflow-y-auto p-2">
+                        <template x-for="p in mergePickerList" :key="p.name">
+                            <button @click="mergePerson(p.name)" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left">
+                                <div class="w-9 h-9 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+                                    <img :src="'/api/faces/'+p.face_id+'/thumbnail'" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'">
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-medium truncate" x-text="p.name"></div>
+                                    <div class="text-[11px] text-gray-400" x-text="p.count + ' photos'"></div>
+                                </div>
+                            </button>
+                        </template>
+                        <div x-show="mergePickerList.length === 0" class="text-center text-sm text-gray-400 py-6">No other people to merge with</div>
+                    </div>
                 </div>
             </div>
 
@@ -430,26 +596,27 @@
         </div>
 
         <!-- ▸▸▸ ASK ▸▸▸ -->
-        <div x-show="view==='ask'" class="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+        <div x-show="view==='ask'" class="flex flex-col" style="height:calc(100vh - 3.5rem)">
             <div class="flex-1 overflow-y-auto p-6 sm:p-10 space-y-3 mx-auto w-full max-w-3xl" id="chatMessages">
                 <div x-show="chatMessages.length===0" class="flex flex-col items-center justify-center min-h-[50vh] text-center">
                     <div class="text-4xl opacity-40 mb-3">&#x1F4AC;</div>
                     <div class="text-base font-semibold text-gray-400 mb-1">Ask Tifaw anything</div>
                     <div class="text-sm text-gray-400 max-w-xs">Ask about your files, photos, or documents in plain English.</div>
                     <div class="flex flex-wrap gap-2 mt-6">
-                        <button @click="chatInput='What files did I add recently?'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">What files did I add recently?</button>
-                        <button @click="chatInput='Find my invoices'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">Find my invoices</button>
-                        <button @click="chatInput='Show me photos of people'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">Photos of people</button>
+                        <button @click="chatInput='Show me my photos from 2019'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">Photos from 2019</button>
+                        <button @click="chatInput='Find my invoices and receipts'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">Find my invoices</button>
+                        <button @click="chatInput='Who are the people in my photos?'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">Who's in my photos?</button>
+                        <button @click="chatInput='What cameras do I use most?'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">Camera stats</button>
                     </div>
                 </div>
                 <template x-for="msg in chatMessages" :key="msg.timestamp">
                     <div class="flex" :class="msg.role==='user' ? 'justify-end' : 'justify-start'">
-                        <div class="bubble-content max-w-[80%] sm:max-w-[70%] px-4 py-3 text-sm leading-relaxed" :class="msg.role==='user' ? 'bg-blue-500 text-white rounded-2xl rounded-br-md' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-md'" x-html="renderMarkdown(msg.content)"></div>
+                        <div class="bubble-content max-w-[90%] sm:max-w-[80%] px-4 py-3 text-sm leading-relaxed" :class="msg.role==='user' ? 'bg-blue-500 text-white rounded-2xl rounded-br-md' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-md'" x-html="renderChatContent(msg.content)"></div>
                     </div>
                 </template>
                 <div x-show="chatLoading" class="flex justify-start"><div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-md px-4 py-3"><span class="typing-dots"></span></div></div>
             </div>
-            <div class="flex gap-3 px-6 sm:px-10 py-4 border-t border-gray-100 dark:border-gray-800 mx-auto max-w-3xl w-full">
+            <div class="flex-shrink-0 flex gap-3 px-6 sm:px-10 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 mx-auto max-w-3xl w-full">
                 <input type="text" class="flex-1 px-4 py-2.5 bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-gray-400" placeholder="Ask about your files..." x-model="chatInput" @keydown.enter="sendChat()">
                 <button @click="sendChat()" :disabled="!chatInput.trim()||chatLoading" class="px-5 py-2.5 bg-blue-500 text-white text-sm font-medium rounded-xl hover:bg-blue-400 disabled:opacity-40 transition-colors">Send</button>
             </div>
@@ -522,6 +689,20 @@
                 <div class="space-y-3">
                     <div class="flex items-center gap-4"><label class="toggle-switch"><input type="checkbox" :checked="configData.rename?.enabled" @change="configData.rename={...(configData.rename||{}),enabled:$event.target.checked}"><span class="toggle-slider"></span></label><div><div class="text-sm">Enable smart renaming</div><div class="text-xs text-gray-400 mt-0.5">Suggest better names for generic filenames</div></div></div>
                     <div class="flex items-center gap-4"><label class="toggle-switch"><input type="checkbox" :checked="configData.rename?.auto_approve" @change="configData.rename={...(configData.rename||{}),auto_approve:$event.target.checked}"><span class="toggle-slider"></span></label><div><div class="text-sm">Auto-approve renames</div><div class="text-xs text-gray-400 mt-0.5">Rename without asking</div></div></div>
+                </div>
+            </div>
+            <!-- Re-index All -->
+            <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5 mb-4">
+                <h2 class="text-sm font-semibold mb-0.5">Re-index Files</h2>
+                <p class="text-xs text-gray-400 mb-4">Re-analyze all files to refresh metadata, descriptions, and tags. Useful after updates.</p>
+                <div class="flex items-center gap-3">
+                    <button @click="reindexAll()" :disabled="reindexingAll" class="px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-400 disabled:opacity-40 transition-colors">
+                        <span x-show="!reindexingAll">Re-index All Files</span>
+                        <span x-show="reindexingAll">Queuing...</span>
+                    </button>
+                    <span x-show="status.pending_files > 0 || status.queue_size > 0" class="text-xs text-gray-400">
+                        <span x-text="status.queue_size || status.pending_files"></span> files in queue
+                    </span>
                 </div>
             </div>
         </div>

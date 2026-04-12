@@ -140,6 +140,80 @@ async def get_overview():
     )).fetchall()
     folders = [{"path": r["watch_folder"], "count": r["count"], "size": r["size"] or 0} for r in folder_rows]
 
+    # Photo locations (GPS from metadata)
+    loc_rows = await (await d.execute(
+        """SELECT id, filename,
+           json_extract(metadata, '$.gps_latitude') as lat,
+           json_extract(metadata, '$.gps_longitude') as lng
+        FROM files WHERE metadata IS NOT NULL
+          AND json_extract(metadata, '$.gps_latitude') IS NOT NULL
+          AND status='indexed'
+        LIMIT 500"""
+    )).fetchall()
+    photo_locations = [{"id": r["id"], "filename": r["filename"],
+                        "lat": r["lat"], "lng": r["lng"]} for r in loc_rows]
+
+    # Calendar heatmap (daily counts, past year)
+    heatmap_rows = await (await d.execute(
+        """SELECT DATE(created_at) as day, COUNT(*) as count
+        FROM files WHERE status='indexed' AND created_at IS NOT NULL
+          AND created_at >= date('now', '-1 year')
+        GROUP BY day ORDER BY day"""
+    )).fetchall()
+    calendar_heatmap = {r["day"]: r["count"] for r in heatmap_rows if r["day"]}
+
+    # People co-occurrence
+    cooc_rows = await (await d.execute(
+        """SELECT f1.label as person_a, f2.label as person_b,
+           COUNT(DISTINCT f1.file_id) as together
+        FROM faces f1 JOIN faces f2
+          ON f1.file_id = f2.file_id AND f1.label < f2.label
+        WHERE f1.label IS NOT NULL AND f2.label IS NOT NULL
+        GROUP BY f1.label, f2.label ORDER BY together DESC LIMIT 10"""
+    )).fetchall()
+    people_cooccurrence = [{"person_a": r["person_a"], "person_b": r["person_b"],
+                            "together": r["together"]} for r in cooc_rows]
+
+    # Top stats
+    top_stats = {}
+
+    # Largest file
+    largest = await (await d.execute(
+        "SELECT filename, size_bytes FROM files WHERE status='indexed' ORDER BY size_bytes DESC LIMIT 1"
+    )).fetchone()
+    if largest:
+        top_stats["largest_file"] = {"name": largest["filename"], "size": largest["size_bytes"] or 0}
+
+    # Most photographed person
+    top_person = await (await d.execute(
+        """SELECT label, COUNT(DISTINCT file_id) as count FROM faces
+        WHERE label IS NOT NULL GROUP BY label ORDER BY count DESC LIMIT 1"""
+    )).fetchone()
+    if top_person:
+        top_stats["most_seen_person"] = {"name": top_person["label"], "count": top_person["count"]}
+
+    # Oldest file
+    oldest = await (await d.execute(
+        "SELECT filename, created_at FROM files WHERE created_at IS NOT NULL ORDER BY created_at ASC LIMIT 1"
+    )).fetchone()
+    if oldest:
+        top_stats["oldest_file"] = {"name": oldest["filename"], "date": (oldest["created_at"] or "")[:10]}
+
+    # Most active month (from timeline)
+    if timeline:
+        best = max(timeline, key=lambda t: t["count"])
+        top_stats["busiest_month"] = {"month": best["month"], "count": best["count"]}
+
+    # Most used camera
+    camera_row = await (await d.execute(
+        """SELECT json_extract(metadata, '$.camera_model') as camera, COUNT(*) as count
+        FROM files WHERE metadata IS NOT NULL
+          AND json_extract(metadata, '$.camera_model') IS NOT NULL
+        GROUP BY camera ORDER BY count DESC LIMIT 1"""
+    )).fetchone()
+    if camera_row and camera_row["camera"]:
+        top_stats["top_camera"] = {"name": camera_row["camera"], "count": camera_row["count"]}
+
     return {
         "total_files": total_files,
         "total_size": total_size,
@@ -151,4 +225,8 @@ async def get_overview():
         "folders": folders,
         "people_count": total_people,
         "photos_with_faces": photos_with_faces,
+        "photo_locations": photo_locations,
+        "calendar_heatmap": calendar_heatmap,
+        "people_cooccurrence": people_cooccurrence,
+        "top_stats": top_stats,
     }

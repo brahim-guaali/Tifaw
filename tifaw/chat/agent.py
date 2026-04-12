@@ -23,8 +23,18 @@ Guidelines:
 - You can chain multiple tool calls in a single turn if needed.
 - After gathering information, synthesize a clear, concise answer.
 - If no results are found, say so honestly.
-- When listing files, include the filename, category, and a short description.
-- Be friendly, concise, and helpful.
+- When the user asks about photos with specific people, first call `list_people` \
+to find the correct label/name, then call `find_photos` with that name.
+- For location queries, the location is searched in file descriptions, tags, and filenames.
+- For date queries, you can use `year`, `date_from`, or `date_to` in `find_photos`.
+
+IMPORTANT — Rich responses:
+- When showing photos, include an image grid using this HTML format for EACH photo:
+  <div class="chat-photo" data-id="FILE_ID"><img src="/api/files/FILE_ID/preview"></div>
+  Wrap multiple photos in: <div class="chat-photo-grid">...</div>
+- When showing file lists, use markdown tables or bullet lists.
+- When showing stats or counts, use bold text.
+- Always be friendly, concise, and helpful.
 """
 
 # ---------------------------------------------------------------------------
@@ -55,10 +65,66 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "find_photos",
+            "description": (
+                "Find photos by person, date range, location, or keyword. "
+                "Use this when the user asks about photos with specific people, "
+                "from specific times, or taken in specific places."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "person": {
+                        "type": "string",
+                        "description": "Name of a person to find in photos (must match a face label exactly).",
+                    },
+                    "year": {
+                        "type": "integer",
+                        "description": "Year the photo was taken (e.g. 2015).",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "Start date in YYYY-MM-DD format.",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "End date in YYYY-MM-DD format.",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Place name to search for in descriptions, tags, and filenames.",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Additional keyword to search (e.g. 'beach', 'wedding').",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_people",
+            "description": (
+                "List all recognized people in photos with their photo counts. "
+                "Use this to find the correct name/label for a person before searching."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_files",
             "description": (
                 "List files in a specific watched folder, optionally filtered by "
-                "category (e.g. 'Image', 'Document', 'Code', etc.)."
+                "category (e.g. 'Images', 'Documents', 'Code', 'Personal', 'Work', etc.)."
             ),
             "parameters": {
                 "type": "object",
@@ -69,7 +135,7 @@ TOOLS: list[dict[str, Any]] = [
                     },
                     "category": {
                         "type": "string",
-                        "description": "Optional category filter (e.g. 'Image', 'Document').",
+                        "description": "Optional category filter.",
                     },
                 },
                 "required": ["folder"],
@@ -82,7 +148,7 @@ TOOLS: list[dict[str, Any]] = [
             "name": "describe_file",
             "description": (
                 "Get full details of a specific file by its database ID, including "
-                "description, tags, category, path, size, and more."
+                "description, tags, category, metadata, path, size, and more."
             ),
             "parameters": {
                 "type": "object",
@@ -101,13 +167,41 @@ TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "get_stats",
             "description": (
-                "Get system statistics: total files tracked, how many are indexed, "
-                "how many are pending analysis, and pending renames."
+                "Get system statistics: total files, indexed count, pending count, "
+                "category breakdown, people count, and storage info."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {},
                 "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_database",
+            "description": (
+                "Run a read-only SQL query against the database for advanced questions. "
+                "Tables: files (id, path, filename, extension, size_bytes, category, "
+                "description, tags, metadata, created_at, modified_at, status), "
+                "faces (id, file_id, label, confidence), "
+                "known_people (name, face_count), "
+                "projects (path, name, description, stack). "
+                "The metadata column is JSON with keys like: date_taken, gps_latitude, "
+                "gps_longitude, camera_make, camera_model, image_width, image_height, "
+                "iso, aperture, focal_length, author, title, page_count. "
+                "Use json_extract(metadata, '$.key') to access metadata fields."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sql": {
+                        "type": "string",
+                        "description": "A SELECT SQL query. Only SELECT is allowed.",
+                    },
+                },
+                "required": ["sql"],
             },
         },
     },
@@ -131,10 +225,18 @@ async def _execute_tool(name: str, arguments: dict[str, Any], db: Database) -> s
                     "path": r["path"],
                     "category": r.get("category"),
                     "description": r.get("description", ""),
+                    "extension": r.get("extension"),
+                    "created_at": r.get("created_at"),
                 }
                 for r in results
             ]
             return json.dumps({"count": len(items), "files": items})
+
+        elif name == "find_photos":
+            return await _find_photos(arguments, db)
+
+        elif name == "list_people":
+            return await _list_people(db)
 
         elif name == "list_files":
             folder = arguments.get("folder", "")
@@ -148,6 +250,8 @@ async def _execute_tool(name: str, arguments: dict[str, Any], db: Database) -> s
                     "filename": r["filename"],
                     "category": r.get("category"),
                     "description": (r.get("description") or "")[:120],
+                    "extension": r.get("extension"),
+                    "created_at": r.get("created_at"),
                     "status": r.get("status"),
                 }
                 for r in results
@@ -159,7 +263,18 @@ async def _execute_tool(name: str, arguments: dict[str, Any], db: Database) -> s
             file = await db.get_file(file_id)
             if file is None:
                 return json.dumps({"error": f"No file found with id {file_id}"})
-            # Return a useful subset
+            metadata = file.get("metadata")
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except Exception:
+                    metadata = None
+            tags = file.get("tags")
+            if isinstance(tags, str):
+                try:
+                    tags = json.loads(tags)
+                except Exception:
+                    tags = []
             return json.dumps(
                 {
                     "id": file["id"],
@@ -169,8 +284,9 @@ async def _execute_tool(name: str, arguments: dict[str, Any], db: Database) -> s
                     "size_bytes": file.get("size_bytes"),
                     "category": file.get("category"),
                     "description": file.get("description"),
-                    "tags": file.get("tags"),
+                    "tags": tags,
                     "content_preview": (file.get("content_preview") or "")[:300],
+                    "metadata": metadata,
                     "status": file.get("status"),
                     "suggested_name": file.get("suggested_name"),
                     "created_at": file.get("created_at"),
@@ -180,7 +296,29 @@ async def _execute_tool(name: str, arguments: dict[str, Any], db: Database) -> s
 
         elif name == "get_stats":
             stats = await db.get_stats()
+            # Add more context
+            d = db.db
+            cats = await (await d.execute(
+                """SELECT category, COUNT(*) as count FROM files
+                WHERE status='indexed' AND category IS NOT NULL
+                GROUP BY category ORDER BY count DESC"""
+            )).fetchall()
+            stats["categories"] = {r["category"]: r["count"] for r in cats}
+
+            people = await (await d.execute(
+                "SELECT COUNT(DISTINCT label) as c FROM faces WHERE label IS NOT NULL"
+            )).fetchone()
+            stats["people_count"] = people["c"]
+
+            size = await (await d.execute(
+                "SELECT SUM(size_bytes) as s FROM files WHERE status='indexed'"
+            )).fetchone()
+            stats["total_size_bytes"] = size["s"] or 0
+
             return json.dumps(stats)
+
+        elif name == "query_database":
+            return await _query_database(arguments, db)
 
         else:
             return json.dumps({"error": f"Unknown tool: {name}"})
@@ -188,6 +326,132 @@ async def _execute_tool(name: str, arguments: dict[str, Any], db: Database) -> s
     except Exception as exc:
         logger.exception("Tool %s failed", name)
         return json.dumps({"error": str(exc)})
+
+
+async def _find_photos(arguments: dict[str, Any], db: Database) -> str:
+    """Find photos with flexible filters: person, date, location, keyword."""
+    d = db.db
+
+    conditions = [
+        "f.status = 'indexed'",
+        "f.extension IN ('.png','.jpg','.jpeg','.gif','.webp','.bmp')",
+    ]
+    params: list[Any] = []
+    join_faces = False
+
+    person = arguments.get("person")
+    if person:
+        join_faces = True
+        conditions.append("fa.label = ?")
+        params.append(person)
+
+    year = arguments.get("year")
+    if year:
+        conditions.append("f.created_at LIKE ?")
+        params.append(f"{year}%")
+
+    date_from = arguments.get("date_from")
+    if date_from:
+        conditions.append("f.created_at >= ?")
+        params.append(date_from)
+
+    date_to = arguments.get("date_to")
+    if date_to:
+        conditions.append("f.created_at <= ?")
+        params.append(date_to + "T23:59:59")
+
+    location = arguments.get("location")
+    if location:
+        loc_lower = f"%{location.lower()}%"
+        conditions.append(
+            "(LOWER(f.description) LIKE ? OR LOWER(f.tags) LIKE ? OR LOWER(f.filename) LIKE ?)"
+        )
+        params.extend([loc_lower, loc_lower, loc_lower])
+
+    query = arguments.get("query")
+    if query:
+        q_lower = f"%{query.lower()}%"
+        conditions.append(
+            "(LOWER(f.description) LIKE ? OR LOWER(f.tags) LIKE ? OR LOWER(f.filename) LIKE ?)"
+        )
+        params.extend([q_lower, q_lower, q_lower])
+
+    join_clause = "JOIN faces fa ON fa.file_id = f.id" if join_faces else ""
+    where = " AND ".join(conditions)
+
+    sql = f"""SELECT DISTINCT f.id, f.filename, f.path, f.description,
+              f.created_at, f.category, f.tags
+              FROM files f {join_clause}
+              WHERE {where}
+              ORDER BY f.created_at DESC LIMIT 20"""
+
+    rows = await (await d.execute(sql, params)).fetchall()
+
+    results = []
+    for r in rows:
+        # Get people in this photo
+        people_rows = await (await d.execute(
+            "SELECT DISTINCT label FROM faces WHERE file_id = ? AND label IS NOT NULL",
+            (r["id"],),
+        )).fetchall()
+        people = [p["label"] for p in people_rows]
+
+        tags = r["tags"]
+        if isinstance(tags, str):
+            try:
+                tags = json.loads(tags)
+            except Exception:
+                tags = []
+
+        results.append({
+            "id": r["id"],
+            "filename": r["filename"],
+            "description": r["description"],
+            "created_at": (r["created_at"] or "")[:10],
+            "category": r["category"],
+            "tags": tags,
+            "people": people,
+        })
+
+    return json.dumps({"count": len(results), "photos": results})
+
+
+async def _list_people(db: Database) -> str:
+    """List all recognized people."""
+    d = db.db
+    rows = await (await d.execute(
+        """SELECT label as name, COUNT(DISTINCT file_id) as photo_count
+        FROM faces WHERE label IS NOT NULL
+        GROUP BY label ORDER BY photo_count DESC"""
+    )).fetchall()
+    people = [{"name": r["name"], "photo_count": r["photo_count"]} for r in rows]
+    return json.dumps({"count": len(people), "people": people})
+
+
+async def _query_database(arguments: dict[str, Any], db: Database) -> str:
+    """Run a read-only SQL query."""
+    sql = arguments.get("sql", "").strip()
+    if not sql:
+        return json.dumps({"error": "No SQL provided"})
+
+    # Safety: only allow SELECT
+    if not sql.upper().startswith("SELECT"):
+        return json.dumps({"error": "Only SELECT queries are allowed"})
+
+    # Block dangerous keywords
+    upper = sql.upper()
+    for kw in ("DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "ATTACH"):
+        if kw in upper:
+            return json.dumps({"error": f"Query contains forbidden keyword: {kw}"})
+
+    try:
+        d = db.db
+        cursor = await d.execute(sql)
+        rows = await cursor.fetchall()
+        results = [dict(r) for r in rows[:50]]
+        return json.dumps({"count": len(results), "rows": results})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 
 # ---------------------------------------------------------------------------

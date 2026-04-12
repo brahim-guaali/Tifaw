@@ -14,6 +14,7 @@ async def get_photos(
     category: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    has_location: bool | None = None,
     limit: int = Query(default=50, le=200),
     offset: int = 0,
 ):
@@ -41,6 +42,9 @@ async def get_photos(
         conditions.append("f.created_at <= ?")
         params.append(date_to)
 
+    if has_location is True:
+        conditions.append("f.metadata IS NOT NULL AND json_extract(f.metadata, '$.gps_latitude') IS NOT NULL")
+
     where = " AND ".join(conditions)
 
     # Get total count
@@ -64,6 +68,12 @@ async def get_photos(
                 f["tags"] = json.loads(tags)
             except Exception:
                 f["tags"] = []
+        metadata = f.get("metadata")
+        if isinstance(metadata, str):
+            try:
+                f["metadata"] = json.loads(metadata)
+            except Exception:
+                f["metadata"] = None
         photos.append(f)
 
     # Get available filters (only on first page)

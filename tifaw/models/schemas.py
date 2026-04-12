@@ -36,6 +36,7 @@ class FileRecord(BaseModel):
     rename_status: RenameStatus | None = None
     original_name: str | None = None
     thumbnail_path: str | None = None
+    metadata: dict | None = None
     created_at: str | None = None
     modified_at: str | None = None
     indexed_at: str | None = None

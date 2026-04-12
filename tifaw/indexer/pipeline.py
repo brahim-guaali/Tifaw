@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +56,16 @@ async def process_file(
 
     created_at, modified_at = _file_times(path)
 
+    # Extract content (includes metadata)
+    extraction = extract_content(path)
+
+    # If EXIF date_taken exists, prefer it over file system creation time
+    metadata = extraction.metadata
+    if metadata and metadata.get("date_taken"):
+        created_at = metadata["date_taken"]
+
+    metadata_json = json.dumps(metadata) if metadata else None
+
     # Upsert file record
     file_id = await db.upsert_file(
         path=file_path,
@@ -65,12 +76,10 @@ async def process_file(
         watch_folder=watch_folder,
         created_at=created_at,
         modified_at=modified_at,
+        metadata=metadata_json,
     )
 
     await db.update_file_status(file_id, "indexing")
-
-    # Extract content
-    extraction = extract_content(path)
 
     # Analyze with LLM
     analysis = await analyze_file(

@@ -52,6 +52,28 @@ async def requeue_pending():
     return {"queued": len(rows)}
 
 
+@router.post("/reindex-all")
+async def reindex_all():
+    """Reset all indexed files to pending and re-queue them for analysis."""
+    from tifaw.main import app, db
+
+    queue = app.state.index_queue if hasattr(app.state, "index_queue") else None
+    if not queue:
+        return {"error": "Index queue not available"}
+
+    # Mark all indexed files as pending
+    await db.db.execute("UPDATE files SET status='pending' WHERE status='indexed'")
+    await db.db.commit()
+
+    # Queue them all
+    cursor = await db.db.execute("SELECT path FROM files WHERE status='pending' LIMIT 10000")
+    rows = await cursor.fetchall()
+    for row in rows:
+        await queue.enqueue(row["path"], priority=5)
+
+    return {"queued": len(rows)}
+
+
 @router.post("/import/spotlight")
 async def import_spotlight(folder: str | None = None):
     """Import files from macOS Spotlight index. Bypasses Full Disk Access restrictions."""

@@ -12,7 +12,7 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 _PAD_RATIO = 0.35
-_MATCH_THRESHOLD = 0.55  # Cosine similarity for 128-d Apple embeddings (0.5-0.6 is good)
+_MATCH_THRESHOLD = 0.80  # Cosine similarity for 128-d Apple embeddings (same person ~0.95+)
 
 
 def _detect_faces_sync(image_path: str) -> list[dict]:

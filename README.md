@@ -12,20 +12,31 @@ Tifaw doesn't just list files -- it tells the story of your digital life. It kno
 
 ### Your Laptop's Story
 - **Overview dashboard** -- animated stats, timeline of activity, storage breakdown, and story cards that summarize your digital life
+- **Category donut chart** -- visual breakdown of file types with percentages
+- **Photo map** -- interactive Leaflet map showing where your photos were taken using GPS metadata
+- **Calendar heatmap** -- GitHub-style daily activity grid for the past year
+- **Top stats cards** -- busiest month, most seen person, oldest file, largest file, top camera
+- **People co-occurrence** -- discover who appears together most in your photos
 - **Context over location** -- files grouped by meaning (Finance, Education, Work) not by folder
 
 ### Photos & People
 - **Face detection** -- automatic face detection using macOS Vision framework during indexing
 - **Face recognition** -- 128-dimensional Apple Vision embeddings match the same person across photos
-- **People management** -- auto-assigned placeholder names, rename once to apply everywhere, merge duplicates
+- **People management** -- auto-assigned placeholder names, rename once to apply everywhere, merge duplicates with visual person picker
 - **Photo gallery** -- masonry grid with people filter bar, category filter, infinite scroll
 - **Image/video previews** -- inline previews in search results and file details
+
+### File Metadata Extraction
+- **EXIF from photos** -- date taken, GPS coordinates, camera make/model, ISO, aperture, focal length, exposure time, image dimensions
+- **PDF metadata** -- title, author, subject, keywords, creation/modification dates, page count
+- **Office metadata** -- author, title, dates, revision count from DOCX and XLSX files
+- **Smart dates** -- EXIF date_taken is preferred over filesystem timestamps for accurate chronology
 
 ### Smart File Management
 - **AI file understanding** -- multimodal analysis of images, PDFs, code, documents, and spreadsheets via Gemma 4 E4B
 - **Smart renaming** -- detects generic filenames (IMG_2847.png, Screenshot 2026-...) and suggests descriptive names with thumbnail previews
 - **Natural language search** -- full-text search powered by SQLite FTS5 with card-based results
-- **Ask Tifaw** -- chat with an AI that knows your file system, with suggested prompts
+- **Ask Tifaw** -- AI chat that can search files, find photos by person/date/location, query the database, and show results with inline photo grids
 - **File actions** -- open in Finder, re-index, move to Trash directly from the UI
 
 ### Organization
@@ -37,6 +48,7 @@ Tifaw doesn't just list files -- it tells the story of your digital life. It kno
 
 ### Settings
 - **Live configuration** -- change watch folders, project directories from the UI with folder picker
+- **Re-index all files** -- bulk re-analyze every file to pick up new metadata after updates
 - **Hot reload** -- settings apply immediately without server restart
 
 ## Tech Stack
@@ -50,7 +62,7 @@ Tifaw doesn't just list files -- it tells the story of your digital life. It kno
 | File watching | [Watchdog](https://github.com/gorakhargosh/watchdog) |
 | PDF extraction | [PyMuPDF](https://pymupdf.readthedocs.io) |
 | Image processing | [Pillow](https://pillow.readthedocs.io) |
-| Frontend | [Tailwind CSS](https://tailwindcss.com) (CDN), [Alpine.js](https://alpinejs.dev), [marked.js](https://marked.js.org) |
+| Frontend | [Tailwind CSS](https://tailwindcss.com) (CDN), [Alpine.js](https://alpinejs.dev), [marked.js](https://marked.js.org), [Leaflet](https://leafletjs.com) |
 
 ## Quick Start
 
@@ -76,7 +88,11 @@ make setup    # installs deps, pulls gemma4:e4b, creates ~/.tifaw
 make dev      # starts the server at http://127.0.0.1:8321
 ```
 
-Open [http://127.0.0.1:8321](http://127.0.0.1:8321) in your browser.
+Open [http://127.0.0.1:8321](http://127.0.0.1:8321) in your browser, or run as a native macOS app:
+
+```bash
+python -m tifaw.app   # opens a native window via pywebview
+```
 
 ### Configuration
 
@@ -115,8 +131,9 @@ Tifaw/
       routes_search.py   # Full-text search
       routes_chat.py     # AI chat
       routes_projects.py # Code project scanner
+    chat/                # AI chat agent with tool-calling (ReAct loop)
     faces/               # Face detection & recognition (Vision framework)
-    indexer/             # Content extraction, LLM analysis, self-healing queue
+    indexer/             # Content extraction, metadata extraction, LLM analysis, queue
     llm/                 # Ollama client wrapper
     models/              # Database layer + Pydantic schemas
     renamer/             # Generic name detection + smart rename

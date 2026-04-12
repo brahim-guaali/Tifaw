@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 router = APIRouter(tags=["files"])
 
 
-def _parse_tags(file_dict: dict) -> dict:
+def _parse_json_fields(file_dict: dict) -> dict:
     tags = file_dict.get("tags")
     if isinstance(tags, str):
         try:
@@ -22,6 +22,14 @@ def _parse_tags(file_dict: dict) -> dict:
             file_dict["tags"] = []
     elif tags is None:
         file_dict["tags"] = []
+
+    metadata = file_dict.get("metadata")
+    if isinstance(metadata, str):
+        try:
+            file_dict["metadata"] = json.loads(metadata)
+        except json.JSONDecodeError:
+            file_dict["metadata"] = None
+
     return file_dict
 
 
@@ -42,7 +50,7 @@ async def list_files(
             "grouped": True,
             "watch_folder": watch_folder,
             "categories": {
-                cat: [_parse_tags(f) for f in files] for cat, files in groups.items()
+                cat: [_parse_json_fields(f) for f in files] for cat, files in groups.items()
             },
         }
 
@@ -53,7 +61,7 @@ async def list_files(
         limit=limit,
         offset=offset,
     )
-    return {"files": [_parse_tags(f) for f in files]}
+    return {"files": [_parse_json_fields(f) for f in files]}
 
 
 @router.get("/files/{file_id}")
@@ -63,7 +71,7 @@ async def get_file(file_id: int):
     file = await db.get_file(file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
-    return _parse_tags(file)
+    return _parse_json_fields(file)
 
 
 @router.post("/files/{file_id}/reindex")
