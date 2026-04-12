@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["faces"])
 
@@ -269,6 +273,81 @@ async def get_person_photos(name: str):
     )
     rows = await cursor.fetchall()
     return {"person": name, "photos": [dict(r) for r in rows], "count": len(rows)}
+
+
+@router.get("/people/{name}/summary")
+async def get_person_summary(name: str):
+    """Generate an AI summary for a person based on their photo history."""
+    from tifaw.main import db, llm
+
+    d = db.db
+
+    # Check cache
+    cache_key = f"person_summary:{name}"
+    cached = await (await d.execute(
+        "SELECT value FROM settings WHERE key=?", (cache_key,)
+    )).fetchone()
+    if cached:
+        return json.loads(cached["value"])
+
+    # Gather data
+    photo_count = (await (await d.execute(
+        "SELECT COUNT(DISTINCT file_id) as c FROM faces WHERE label=?", (name,)
+    )).fetchone())["c"]
+
+    if photo_count == 0:
+        return {"summary": None}
+
+    # Date range
+    dates = await (await d.execute(
+        """SELECT MIN(f.created_at) as first, MAX(f.created_at) as last
+        FROM files f JOIN faces fa ON fa.file_id = f.id WHERE fa.label=?""",
+        (name,),
+    )).fetchone()
+    date_range = f"{(dates['first'] or '')[:10]} to {(dates['last'] or '')[:10]}"
+
+    # Locations
+    locations = await (await d.execute(
+        """SELECT DISTINCT json_extract(f.metadata, '$.location_city') as city
+        FROM files f JOIN faces fa ON fa.file_id = f.id
+        WHERE fa.label=? AND json_extract(f.metadata, '$.location_city') IS NOT NULL""",
+        (name,),
+    )).fetchall()
+    location_names = [r["city"] for r in locations if r["city"]]
+
+    # Co-occurring people
+    co_people = await (await d.execute(
+        """SELECT f2.label, COUNT(DISTINCT f1.file_id) as together
+        FROM faces f1 JOIN faces f2 ON f1.file_id = f2.file_id
+        WHERE f1.label=? AND f2.label != ? AND f2.label IS NOT NULL AND f2.label NOT LIKE 'Person %'
+        GROUP BY f2.label ORDER BY together DESC LIMIT 5""",
+        (name, name),
+    )).fetchall()
+    co_names = [f"{r['label']} ({r['together']} photos)" for r in co_people]
+
+    try:
+        stats = {
+            "name": name,
+            "photo_count": photo_count,
+            "date_range": date_range,
+            "locations": location_names,
+            "often_with": co_names,
+        }
+        text = await llm.generate(
+            prompt=f"Generate a 2-sentence profile summary for this person based on their photo presence:\n{json.dumps(stats)}",
+            system="You are Tifaw. Write a warm, brief profile. No markdown. Refer to the person by name.",
+            temperature=0.5,
+        )
+        result = {"summary": text.strip(), "stats": stats}
+        await d.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (cache_key, json.dumps(result)),
+        )
+        await d.commit()
+        return result
+    except Exception as e:
+        logger.error("Person summary failed for %s: %s", name, e)
+        return {"summary": None, "error": str(e)}
 
 
 async def _get_faces_response(db, file_id: int) -> dict:
