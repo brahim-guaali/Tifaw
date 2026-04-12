@@ -1,45 +1,62 @@
 # Tifaw
 
-**Local AI that brings clarity to your files.**
+**Your laptop's story, powered by local AI.**
 
-Tifaw (ⵜⵉⴼⴰⵡ) - meaning "clarity" or "radiance" in Tamazight (Amazigh/Berber) - is a local AI desktop assistant and smart file organizer powered by Google's Gemma 4 E4B model running entirely on your machine through Ollama. No cloud, no telemetry, no subscriptions.
+Tifaw (ⵜⵉⴼⴰⵡ) - meaning "clarity" or "radiance" in Tamazight (Amazigh/Berber) - is a local AI desktop assistant that helps you understand everything on your machine. It automatically analyzes, categorizes, and organizes your files using Google's Gemma 4 model running entirely on your laptop through Ollama. No cloud, no telemetry, no subscriptions.
 
-Drop files into your watched folders and Tifaw will automatically understand, describe, tag, categorize, and organize them using multimodal AI. Search your files with natural language, get smart rename suggestions for generic filenames, and chat with an AI that knows your file system.
+Tifaw doesn't just list files -- it tells the story of your digital life. It knows your photos, recognizes faces, groups documents by purpose, tracks your code projects, and lets you ask questions about everything in plain English.
 
 ---
 
 ## Features
 
-- **Multi-folder watching** -- monitors Downloads, Desktop, Documents (configurable) for new and changed files
+### Your Laptop's Story
+- **Overview dashboard** -- animated stats, timeline of activity, storage breakdown, and story cards that summarize your digital life
+- **Context over location** -- files grouped by meaning (Finance, Education, Work) not by folder
+
+### Photos & People
+- **Face detection** -- automatic face detection using macOS Vision framework during indexing
+- **Face recognition** -- 128-dimensional Apple Vision embeddings match the same person across photos
+- **People management** -- auto-assigned placeholder names, rename once to apply everywhere, merge duplicates
+- **Photo gallery** -- masonry grid with people filter bar, category filter, infinite scroll
+- **Image/video previews** -- inline previews in search results and file details
+
+### Smart File Management
 - **AI file understanding** -- multimodal analysis of images, PDFs, code, documents, and spreadsheets via Gemma 4 E4B
-- **Smart renaming** -- detects generic filenames (IMG_2847.png, Screenshot 2026-...) and suggests descriptive names
-- **Natural language search** -- full-text search powered by SQLite FTS5 with Porter stemming
-- **Chat interface** -- ask questions about your files in plain English
-- **Grouped folder views** -- browse files organized by AI-assigned category instead of flat lists
-- **Auto-organize** -- AI proposes folder structures, you preview and approve before anything moves
-- **Smart folders** -- virtual collections based on AI tags and categories
-- **Duplicate detection** -- find duplicates by content hash and semantic similarity
-- **Screenshot intelligence** -- extract error messages, receipt details, and more from screenshots
-- **Dev project manager** -- scan project directories, detect tech stacks, show git status
-- **Stale file cleanup** -- surface files untouched for 90+ days
-- **Daily digest** -- summary of new files, pending renames, and suggested actions
+- **Smart renaming** -- detects generic filenames (IMG_2847.png, Screenshot 2026-...) and suggests descriptive names with thumbnail previews
+- **Natural language search** -- full-text search powered by SQLite FTS5 with card-based results
+- **Ask Tifaw** -- chat with an AI that knows your file system, with suggested prompts
+- **File actions** -- open in Finder, re-index, move to Trash directly from the UI
+
+### Organization
+- **Multi-folder watching** -- monitors Downloads, Desktop, Documents (configurable from UI)
+- **Documents by purpose** -- Finance, Legal, Education, Work, Personal groupings
+- **Dev project scanner** -- detect code projects, tech stacks, git status
+- **Spotlight fallback** -- uses macOS Spotlight index when Full Disk Access isn't available
+- **Self-healing queue** -- pending files automatically re-queued after crashes or restarts
+
+### Settings
+- **Live configuration** -- change watch folders, project directories from the UI with folder picker
+- **Hot reload** -- settings apply immediately without server restart
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | AI model | [Gemma 4 E4B](https://ai.google.dev/gemma) via [Ollama](https://ollama.com) |
+| Face detection | macOS Vision framework via [PyObjC](https://pyobjc.readthedocs.io) |
 | Backend | Python 3.11+, [FastAPI](https://fastapi.tiangolo.com), [Uvicorn](https://www.uvicorn.org) |
 | Database | SQLite with FTS5 (via [aiosqlite](https://github.com/omnilib/aiosqlite)) |
 | File watching | [Watchdog](https://github.com/gorakhargosh/watchdog) |
 | PDF extraction | [PyMuPDF](https://pymupdf.readthedocs.io) |
 | Image processing | [Pillow](https://pillow.readthedocs.io) |
-| Frontend | Vanilla HTML/CSS, [Alpine.js](https://alpinejs.dev), [marked.js](https://marked.js.org) |
+| Frontend | [Tailwind CSS](https://tailwindcss.com) (CDN), [Alpine.js](https://alpinejs.dev), [marked.js](https://marked.js.org) |
 
 ## Quick Start
 
 ### Prerequisites
 
+- macOS (face detection uses Apple Vision framework)
 - Python 3.11 or later
 - [Ollama](https://ollama.com) installed and running
 - ~5 GB disk space for the Gemma 4 E4B model
@@ -48,7 +65,8 @@ Drop files into your watched folders and Tifaw will automatically understand, de
 
 ```bash
 git clone https://github.com/brahim-guaali/Tifaw.git
-cd tifaw
+cd Tifaw
+python3 -m venv .venv
 make setup    # installs deps, pulls gemma4:e4b, creates ~/.tifaw
 ```
 
@@ -62,13 +80,16 @@ Open [http://127.0.0.1:8321](http://127.0.0.1:8321) in your browser.
 
 ### Configuration
 
-Edit `config.yaml` in the project root to customize watched folders, rename behavior, cleanup thresholds, and supported file types.
+Settings can be changed directly from the UI (Settings page), or by editing `config.yaml`:
 
 ```yaml
 watch_folders:
   - ~/Downloads
   - ~/Desktop
   - ~/Documents
+
+project_directories:
+  - ~/Projects
 
 rename:
   enabled: true
@@ -78,43 +99,37 @@ cleanup:
   threshold_days: 90
 ```
 
-## Screenshots
-
-> _Dashboard view -- coming soon_
-
-> _Search results -- coming soon_
-
-> _Smart rename review -- coming soon_
-
-> _Chat interface -- coming soon_
-
 ## Project Structure
 
 ```
-tifaw/
-  tifaw/               # Python package
-    api/               # FastAPI route handlers
-    chat/              # Chat agent (ReAct + tools)
-    cleanup/           # Stale file detection
-    digest/            # Daily digest generation
-    duplicates/        # Hash + similarity duplicate finder
-    indexer/           # Content extraction, LLM analysis, queue
-    llm/               # Ollama client wrapper
-    models/            # Database layer + Pydantic schemas
-    organizer/         # AI folder structure proposals
-    projects/          # Dev project scanner
-    renamer/           # Generic name detection + smart rename
-    screenshots/       # Screenshot intelligence
-    search/            # FTS5 search helpers
-    smartfolders/      # Virtual folder engine
-    watcher/           # Watchdog file system observer
-    config.py          # Settings loader (YAML + env)
-    main.py            # FastAPI app + lifespan
-  frontend/            # Static HTML/CSS/JS (Alpine.js)
-  tests/               # Pytest test suite
-  config.yaml          # User configuration
-  Makefile             # Dev commands
-  pyproject.toml       # Package metadata + dependencies
+Tifaw/
+  tifaw/                 # Python package
+    api/                 # FastAPI route handlers
+      routes_overview.py # Story dashboard API
+      routes_photos.py   # Photo gallery with filters
+      routes_faces.py    # Face detection & people management
+      routes_documents.py# Documents grouped by purpose
+      routes_config.py   # Live settings API with folder browser
+      routes_files.py    # File CRUD, preview, reveal, delete
+      routes_rename.py   # Smart rename proposals
+      routes_search.py   # Full-text search
+      routes_chat.py     # AI chat
+      routes_projects.py # Code project scanner
+    faces/               # Face detection & recognition (Vision framework)
+    indexer/             # Content extraction, LLM analysis, self-healing queue
+    llm/                 # Ollama client wrapper
+    models/              # Database layer + Pydantic schemas
+    renamer/             # Generic name detection + smart rename
+    watcher/             # Watchdog file system observer + Spotlight fallback
+    config.py            # Settings loader (YAML + env)
+    main.py              # FastAPI app + lifespan
+  frontend/              # Static frontend
+    index.html           # Alpine.js SPA with Tailwind CSS
+    app.js               # Application logic
+    styles.css           # Custom animations & components
+  config.yaml            # User configuration
+  Makefile               # Dev commands
+  pyproject.toml         # Package metadata + dependencies
 ```
 
 ## Development
