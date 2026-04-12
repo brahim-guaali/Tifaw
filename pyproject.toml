@@ -25,6 +25,7 @@ dependencies = [
     "pillow>=11.0",
     "python-multipart>=0.0.18",
     "aiosqlite>=0.21",
+    "pyobjc-framework-Vision>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

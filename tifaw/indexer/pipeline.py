@@ -98,6 +98,15 @@ async def process_file(
         indexed_at=now,
     )
 
+    # Auto-detect faces for photo files (skip screenshots)
+    image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+    is_screenshot = analysis.category == "Screenshots" or "screenshot" in (analysis.tags or [])
+    if path.suffix.lower() in image_exts and not is_screenshot:
+        try:
+            await _detect_and_match_faces(file_id, file_path, db, settings)
+        except Exception:
+            logger.exception("Face detection failed for %s", path.name)
+
     logger.info(
         "Indexed: %s → category=%s, tags=%s%s",
         path.name,
@@ -105,3 +114,94 @@ async def process_file(
         analysis.tags,
         f", rename→{suggested_name}" if suggested_name else "",
     )
+
+
+async def _detect_and_match_faces(
+    file_id: int, file_path: str, db: Database, settings: Settings
+) -> None:
+    """Detect faces in an image, match against known people, and store results."""
+    import json as _json
+    from tifaw.faces.detector import (
+        crop_face,
+        detect_faces,
+        find_matching_person,
+    )
+
+    # Skip if faces already detected for this file
+    cursor = await db.db.execute("SELECT id FROM faces WHERE file_id=?", (file_id,))
+    if await cursor.fetchone():
+        return
+
+    faces = await detect_faces(file_path)
+    if not faces:
+        return
+
+    # Load all labeled faces with descriptors for matching
+    cursor = await db.db.execute(
+        "SELECT label, descriptor FROM faces WHERE label IS NOT NULL AND descriptor IS NOT NULL"
+    )
+    known_rows = await cursor.fetchall()
+    known_faces = []
+    for row in known_rows:
+        try:
+            known_faces.append({
+                "label": row["label"],
+                "descriptor": _json.loads(row["descriptor"]),
+            })
+        except (TypeError, _json.JSONDecodeError):
+            continue
+
+    # Get next person number for new placeholders
+    cursor = await db.db.execute(
+        "SELECT MAX(CAST(SUBSTR(label, 8) AS INTEGER)) as max_num "
+        "FROM faces WHERE label LIKE 'Person %'"
+    )
+    row = await cursor.fetchone()
+    next_person_num = (row["max_num"] or 0) + 1
+
+    faces_dir = Path(settings.data_dir) / "faces"
+
+    for i, face in enumerate(faces):
+        if face.get("confidence", 0) < 0.4:
+            continue
+
+        # Use the 128-d embedding from Apple Vision (computed during detection)
+        descriptor = face.get("embedding")
+
+        # Try to match against known people
+        label = None
+        if descriptor and known_faces:
+            label = find_matching_person(descriptor, known_faces)
+
+        # Assign placeholder if no match
+        if not label:
+            label = f"Person {next_person_num}"
+            next_person_num += 1
+
+        # Crop and save thumbnail
+        thumb_path = str(faces_dir / f"{file_id}_{i}.jpg")
+        crop_face(file_path, face, thumb_path)
+
+        # Store in DB
+        descriptor_json = _json.dumps(descriptor) if descriptor else None
+        await db.db.execute(
+            """INSERT INTO faces (file_id, label, x, y, w, h, confidence, thumbnail_path, descriptor)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (file_id, label, face["x"], face["y"], face["w"], face["h"],
+             face.get("confidence"), thumb_path, descriptor_json),
+        )
+
+        # Add to known faces for matching subsequent faces in this batch
+        if descriptor:
+            known_faces.append({"label": label, "descriptor": descriptor})
+
+        # Upsert known_people
+        await db.db.execute(
+            """INSERT INTO known_people (name, face_count)
+            VALUES (?, 1)
+            ON CONFLICT(name) DO UPDATE SET face_count = face_count + 1""",
+            (label,),
+        )
+
+    await db.db.commit()
+    logger.info("Detected %d face(s) in %s", len(faces), Path(file_path).name)

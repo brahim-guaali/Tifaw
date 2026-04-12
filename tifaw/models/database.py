@@ -95,6 +95,30 @@ CREATE TABLE IF NOT EXISTS projects (
     scanned_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS faces (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    label TEXT,
+    x REAL NOT NULL,
+    y REAL NOT NULL,
+    w REAL NOT NULL,
+    h REAL NOT NULL,
+    confidence REAL,
+    thumbnail_path TEXT,
+    descriptor TEXT,
+    detected_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_faces_file_id ON faces(file_id);
+CREATE INDEX IF NOT EXISTS idx_faces_label ON faces(label);
+
+CREATE TABLE IF NOT EXISTS known_people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    face_count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_status ON files(status);
 CREATE INDEX IF NOT EXISTS idx_files_watch_folder ON files(watch_folder);
 CREATE INDEX IF NOT EXISTS idx_files_category ON files(category);
@@ -114,6 +138,22 @@ class Database:
         self._db.row_factory = aiosqlite.Row
         await self._db.executescript(_SCHEMA)
         await self._db.commit()
+        await self._migrate()
+
+    async def _migrate(self) -> None:
+        """Add columns that may be missing from older schemas."""
+        migrations = [
+            ("faces", "descriptor", "ALTER TABLE faces ADD COLUMN descriptor TEXT"),
+        ]
+        for table, column, sql in migrations:
+            try:
+                cursor = await self._db.execute(f"PRAGMA table_info({table})")
+                cols = [row[1] for row in await cursor.fetchall()]
+                if column not in cols:
+                    await self._db.execute(sql)
+                    await self._db.commit()
+            except Exception:
+                pass
 
     async def close(self) -> None:
         if self._db:
