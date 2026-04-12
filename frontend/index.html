@@ -4,300 +4,589 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tifaw</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script>
+    tailwind.config = {
+        darkMode: 'class',
+        theme: {
+            extend: {
+                fontFamily: {
+                    sans: ['-apple-system','BlinkMacSystemFont','"Segoe UI"','Roboto','Helvetica','Arial','sans-serif']
+                }
+            }
+        }
+    };
+    </script>
     <link rel="stylesheet" href="/styles.css">
+    <script>
+    (function(){ if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark'); })();
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
-<body x-data="app()" x-init="init()">
+<body x-data="app()" x-init="init()" class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans h-screen flex overflow-hidden antialiased transition-colors duration-300">
 
-    <!-- Sidebar Navigation -->
-    <nav class="sidebar">
-        <div class="sidebar-header">
-            <div class="logo">
-                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                    <rect width="28" height="28" rx="6" fill="var(--accent)"/>
-                    <path d="M8 10h12M8 14h8M8 18h10" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                <span class="logo-text">Tifaw</span>
+    <!-- Toast -->
+    <div x-show="toast.show" x-transition class="fixed top-5 left-1/2 -translate-x-1/2 z-[200] px-5 py-2.5 rounded-xl text-sm font-medium shadow-xl" :class="toast.type==='success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'" x-text="toast.message"></div>
+
+    <!-- Mobile Backdrop -->
+    <div x-show="sidebarOpen" x-transition.opacity @click="sidebarOpen=false" class="fixed inset-0 bg-black/30 z-40 lg:hidden"></div>
+
+    <!-- Mobile Top Bar -->
+    <div class="fixed top-0 left-0 right-0 h-14 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex items-center px-4 z-30 lg:hidden">
+        <button @click="sidebarOpen=!sidebarOpen" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <span class="ml-3 font-semibold text-sm">Tifaw</span>
+        <button @click="toggleDarkMode()" class="ml-auto p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
+            <svg x-show="darkMode" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41m12.73-12.73l1.41-1.41"/></svg>
+            <svg x-show="!darkMode" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
+        </button>
+    </div>
+
+    <!-- Sidebar -->
+    <nav :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'" class="fixed inset-y-0 left-0 w-56 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col z-50 transition-transform duration-200 lg:translate-x-0 lg:static lg:z-auto">
+        <div class="p-4 pb-2">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-sm shadow-blue-500/30">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h10M4 18h13"/></svg>
+                </div>
+                <span class="text-[15px] font-bold tracking-tight">Tifaw</span>
             </div>
         </div>
 
-        <div class="nav-items">
-            <button class="nav-item" :class="{ active: view === 'dashboard' }" @click="view = 'dashboard'">
-                <span class="nav-icon">⬡</span> Dashboard
+        <div class="flex-1 px-2 mt-2 space-y-0.5 overflow-y-auto">
+            <button @click="navigate('overview')" class="nav-btn" :class="view==='overview' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"/></svg>
+                <span>Overview</span>
             </button>
-            <button class="nav-item" :class="{ active: view === 'search' }" @click="view = 'search'">
-                <span class="nav-icon">⌕</span> Search
+            <button @click="navigate('photos')" class="nav-btn" :class="view==='photos' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/><circle cx="12" cy="13.5" r="3"/></svg>
+                <span>Photos</span>
             </button>
-            <button class="nav-item" :class="{ active: view === 'folders' }" @click="view = 'folders'">
-                <span class="nav-icon">▤</span> Folders
+            <button @click="navigate('people')" class="nav-btn" :class="view==='people' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+                <span>People</span>
             </button>
-            <button class="nav-item" :class="{ active: view === 'chat' }" @click="view = 'chat'">
-                <span class="nav-icon">◉</span> Chat
+            <button @click="navigate('documents')" class="nav-btn" :class="view==='documents' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                <span>Documents</span>
             </button>
-            <button class="nav-item" :class="{ active: view === 'renames' }" @click="view = 'renames'; loadRenames()">
-                <span class="nav-icon">✎</span> Renames
-                <span x-show="status.pending_renames > 0" class="badge" x-text="status.pending_renames"></span>
+
+            <div class="h-px bg-gray-100 dark:bg-gray-800 my-2"></div>
+
+            <button @click="navigate('projects')" class="nav-btn" :class="view==='projects' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/></svg>
+                <span>Projects</span>
             </button>
-            <button class="nav-item" :class="{ active: view === 'projects' }" @click="view = 'projects'">
-                <span class="nav-icon">⟨/⟩</span> Projects
+            <button @click="navigate('search')" class="nav-btn" :class="view==='search' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+                <span>Search</span>
+            </button>
+            <button @click="navigate('ask')" class="nav-btn" :class="view==='ask' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/></svg>
+                <span>Ask Tifaw</span>
+            </button>
+            <button @click="navigate('renames')" class="nav-btn" :class="view==='renames' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
+                <span>Renames</span>
+                <span x-show="status.pending_renames>0" x-text="status.pending_renames" class="ml-auto bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
             </button>
         </div>
 
-        <div class="sidebar-footer">
-            <div class="status-indicator">
-                <span class="dot" :class="status.ollama_connected ? 'green' : 'red'"></span>
-                <span x-text="status.ollama_connected ? 'Gemma 4 Online' : 'Ollama Offline'"></span>
+        <!-- Sidebar bottom -->
+        <div class="px-2 pb-1">
+            <button @click="navigate('settings')" class="nav-btn text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800" :class="view==='settings' && 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>Settings</span>
+            </button>
+        </div>
+        <div class="px-3 py-2.5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full" :class="status.ollama_connected ? 'bg-emerald-400' : 'bg-red-400'"></span>
+                <span class="text-[11px] text-gray-400" x-text="status.ollama_connected ? 'AI Online' : 'AI Offline'"></span>
             </div>
+            <button @click="toggleDarkMode()" class="hidden lg:flex p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400" title="Toggle theme">
+                <svg x-show="darkMode" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41m12.73-12.73l1.41-1.41"/></svg>
+                <svg x-show="!darkMode" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
+            </button>
         </div>
     </nav>
 
-    <!-- Main Content -->
-    <main class="content">
+    <!-- ═══════════════════════ MAIN CONTENT ═══════════════════════ -->
+    <main class="flex-1 overflow-y-auto pt-14 lg:pt-0">
 
-        <!-- Dashboard View -->
-        <div x-show="view === 'dashboard'" class="view">
-            <h1>Dashboard</h1>
+        <!-- ▸▸▸ OVERVIEW ▸▸▸ -->
+        <div x-show="view==='overview'" class="min-h-screen">
+            <template x-if="overview">
+                <div>
+                    <!-- Hero -->
+                    <div class="hero-enter bg-gradient-to-b from-blue-50 via-white to-white dark:from-blue-950/30 dark:via-gray-950 dark:to-gray-950 px-6 sm:px-10 pt-10 pb-8">
+                        <p class="text-sm font-medium text-blue-500 dark:text-blue-400 mb-2">Your Digital Life</p>
+                        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight leading-tight mb-3">
+                            Your laptop holds
+                            <span class="text-blue-600 dark:text-blue-400 count-shimmer" x-init="$nextTick(() => countUp($el, overview.total_files))" x-text="overview.total_files.toLocaleString()"></span>
+                            files<br>
+                            <span class="text-gray-400 dark:text-gray-500 text-xl sm:text-2xl font-normal" x-text="'spanning ' + overview.year_span.years + ' years of your digital life'"></span>
+                        </h1>
+                        <p class="text-sm text-gray-500 dark:text-gray-400" x-text="formatSize(overview.total_size) + ' across ' + overview.folders.length + ' folders'"></p>
+                    </div>
 
-            <!-- Stats Cards -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value" x-text="status.total_files">0</div>
-                    <div class="stat-label">Total Files</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" x-text="status.indexed_files">0</div>
-                    <div class="stat-label">Indexed</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" x-text="status.pending_files">0</div>
-                    <div class="stat-label">Pending</div>
-                </div>
-                <div class="stat-card accent">
-                    <div class="stat-value" x-text="status.pending_renames">0</div>
-                    <div class="stat-label">Renames</div>
-                </div>
-            </div>
-
-            <!-- Watched Folders -->
-            <h2>Watched Folders</h2>
-            <div class="folder-grid">
-                <template x-for="folder in status.watched_folders" :key="folder">
-                    <button class="folder-card" @click="openFolder(folder)">
-                        <div class="folder-icon">📁</div>
-                        <div class="folder-name" x-text="folder.split('/').pop()"></div>
-                        <div class="folder-path" x-text="folder"></div>
-                    </button>
-                </template>
-            </div>
-
-            <!-- Recent Files -->
-            <h2>Recent Files</h2>
-            <div class="file-list">
-                <template x-for="file in recentFiles" :key="file.id">
-                    <div class="file-card" @click="selectedFile = file">
-                        <div class="file-icon" x-text="getFileIcon(file.extension)"></div>
-                        <div class="file-info">
-                            <div class="file-name" x-text="file.filename"></div>
-                            <div class="file-desc" x-text="file.description || 'Pending analysis...'"></div>
-                        </div>
-                        <div class="file-tags">
-                            <template x-for="tag in (file.tags || []).slice(0, 3)" :key="tag">
-                                <span class="tag" x-text="tag"></span>
+                    <!-- Story Cards -->
+                    <div class="px-6 sm:px-10 -mt-2">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <template x-for="(card, i) in overview.story_cards" :key="card.type">
+                                <div @click="navigate(card.link)" class="card-enter card-lift bg-white dark:bg-gray-800/60 rounded-2xl p-5 border border-gray-100 dark:border-gray-700/50 cursor-pointer group">
+                                    <div class="flex items-start justify-between mb-3">
+                                        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+                                             :class="{
+                                                'bg-blue-50 dark:bg-blue-500/10 text-blue-500': card.color==='blue',
+                                                'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500': card.color==='emerald',
+                                                'bg-violet-50 dark:bg-violet-500/10 text-violet-500': card.color==='violet',
+                                                'bg-amber-50 dark:bg-amber-500/10 text-amber-500': card.color==='amber',
+                                                'bg-gray-100 dark:bg-gray-700 text-gray-500': card.color==='slate',
+                                             }">
+                                            <span x-show="card.icon==='camera'">&#x1F4F7;</span>
+                                            <span x-show="card.icon==='file-text'">&#x1F4C4;</span>
+                                            <span x-show="card.icon==='code'">&#x1F4BB;</span>
+                                            <span x-show="card.icon==='award'">&#x1F3C6;</span>
+                                            <span x-show="card.icon==='monitor'">&#x1F5B5;</span>
+                                        </div>
+                                        <svg class="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+                                    </div>
+                                    <div class="text-2xl font-bold tracking-tight mb-0.5" x-init="$nextTick(() => countUp($el, card.count))" x-text="card.count.toLocaleString()"></div>
+                                    <div class="text-sm text-gray-500 dark:text-gray-400" x-text="card.label"></div>
+                                </div>
                             </template>
                         </div>
-                        <div class="file-status">
-                            <span class="status-badge" :class="file.status" x-text="file.status"></span>
+                    </div>
+
+                    <!-- Storage Breakdown -->
+                    <div class="px-6 sm:px-10 mt-8">
+                        <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">What's on your laptop</h2>
+                        <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5">
+                            <div class="flex h-3 rounded-full overflow-hidden mb-4">
+                                <template x-for="cat in overview.categories" :key="cat.name">
+                                    <div class="storage-seg" :class="catColor(cat.name)" :style="'width:' + (cat.count / overview.total_files * 100) + '%'" :title="cat.name + ': ' + cat.count"></div>
+                                </template>
+                            </div>
+                            <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+                                <template x-for="cat in overview.categories.slice(0,8)" :key="cat.name">
+                                    <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                                        <div class="w-2.5 h-2.5 rounded-sm" :class="catColor(cat.name)"></div>
+                                        <span x-text="cat.name"></span>
+                                        <span class="text-gray-300 dark:text-gray-600" x-text="cat.count"></span>
+                                    </div>
+                                </template>
+                            </div>
                         </div>
                     </div>
-                </template>
-                <div x-show="recentFiles.length === 0" class="empty-state">
-                    No files indexed yet. Drop files in your watched folders to get started.
-                </div>
-            </div>
-        </div>
 
-        <!-- Search View -->
-        <div x-show="view === 'search'" class="view">
-            <div class="search-container">
-                <input
-                    type="text"
-                    class="search-input"
-                    placeholder="Search your files... (e.g. 'invoices from March')"
-                    x-model="searchQuery"
-                    @input.debounce.300ms="performSearch()"
-                    @keydown.enter="performSearch()"
-                    autofocus
-                >
-            </div>
-            <div class="search-results">
-                <div x-show="searchQuery && searchResults.length === 0" class="empty-state">
-                    No results found for "<span x-text="searchQuery"></span>"
-                </div>
-                <template x-for="file in searchResults" :key="file.id">
-                    <div class="file-card" @click="selectedFile = file">
-                        <div class="file-icon" x-text="getFileIcon(file.extension)"></div>
-                        <div class="file-info">
-                            <div class="file-name" x-text="file.filename"></div>
-                            <div class="file-desc" x-text="file.description"></div>
+                    <!-- Timeline -->
+                    <div class="px-6 sm:px-10 mt-8" x-show="overview.timeline.length > 0">
+                        <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Activity over time</h2>
+                        <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5 overflow-hidden">
+                            <div class="scroll-fade">
+                                <div class="flex items-end gap-px h-24" :style="'min-width:' + overview.timeline.length * 6 + 'px'">
+                                    <template x-for="t in overview.timeline" :key="t.month">
+                                        <div class="timeline-bar flex-1 rounded-t-sm bg-blue-400 dark:bg-blue-500 min-w-[3px] opacity-70 hover:opacity-100 transition-opacity" :style="'height:' + Math.max(2, t.count / maxTimelineCount() * 100) + '%'" :title="t.month + ': ' + t.count + ' files'"></div>
+                                    </template>
+                                </div>
+                            </div>
+                            <div class="flex justify-between mt-2 text-[10px] text-gray-400">
+                                <span x-text="overview.timeline[0]?.month"></span>
+                                <span x-text="overview.timeline[overview.timeline.length-1]?.month"></span>
+                            </div>
                         </div>
-                        <div class="file-tags">
-                            <template x-for="tag in (file.tags || []).slice(0, 3)" :key="tag">
-                                <span class="tag" x-text="tag"></span>
-                            </template>
-                        </div>
-                        <span class="category-badge" x-text="file.category"></span>
                     </div>
-                </template>
-            </div>
-        </div>
 
-        <!-- Folder Browser View -->
-        <div x-show="view === 'folders'" class="view">
-            <h1>Folder Browser</h1>
-            <div class="folder-tabs">
-                <template x-for="folder in status.watched_folders" :key="folder">
-                    <button
-                        class="folder-tab"
-                        :class="{ active: activeFolder === folder }"
-                        @click="openFolder(folder)"
-                        x-text="folder.split('/').pop()"
-                    ></button>
-                </template>
-            </div>
-            <div x-show="folderGroups" class="category-groups">
-                <template x-for="(files, category) in folderGroups" :key="category">
-                    <details class="category-group" open>
-                        <summary>
-                            <span class="category-name" x-text="category"></span>
-                            <span class="category-count" x-text="files.length + ' files'"></span>
-                        </summary>
-                        <div class="file-list">
-                            <template x-for="file in files" :key="file.id">
-                                <div class="file-card compact" @click="selectedFile = file">
-                                    <div class="file-icon" x-text="getFileIcon(file.extension)"></div>
-                                    <div class="file-info">
-                                        <div class="file-name" x-text="file.filename"></div>
-                                        <div class="file-desc" x-text="file.description || ''"></div>
+                    <!-- Recent -->
+                    <div class="px-6 sm:px-10 mt-8 pb-10">
+                        <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Recently analyzed</h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <template x-for="file in overview.recent" :key="file.id">
+                                <div @click="selectedFile=file" class="card-enter card-lift bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden cursor-pointer">
+                                    <div x-show="isImage(file.extension)" class="aspect-video bg-gray-100 dark:bg-gray-900 overflow-hidden">
+                                        <img :src="'/api/files/'+file.id+'/preview'" class="w-full h-full object-cover" loading="lazy" onerror="this.parentElement.style.display='none'">
+                                    </div>
+                                    <div class="p-3">
+                                        <div class="text-xs font-medium truncate" x-text="file.filename"></div>
+                                        <div class="text-[11px] text-gray-400 dark:text-gray-500 line-clamp-1 mt-0.5" x-text="file.description"></div>
                                     </div>
                                 </div>
                             </template>
                         </div>
-                    </details>
-                </template>
+                    </div>
+                </div>
+            </template>
+            <div x-show="overviewLoading" class="flex items-center justify-center h-64">
+                <div class="text-gray-400 text-sm">Loading your story...</div>
             </div>
         </div>
 
-        <!-- Chat View -->
-        <div x-show="view === 'chat'" class="view chat-view">
-            <div class="chat-messages" id="chatMessages">
-                <template x-for="msg in chatMessages" :key="msg.timestamp">
-                    <div class="chat-bubble" :class="msg.role">
-                        <div class="bubble-content" x-html="renderMarkdown(msg.content)"></div>
-                    </div>
-                </template>
-                <div x-show="chatLoading" class="chat-bubble assistant">
-                    <div class="bubble-content typing">
-                        <span class="dot-pulse"></span>
-                    </div>
+        <!-- ▸▸▸ PHOTOS ▸▸▸ -->
+        <div x-show="view==='photos'" class="h-full flex flex-col">
+            <div class="px-6 sm:px-10 pt-6 pb-4">
+                <h1 class="text-2xl font-bold tracking-tight mb-4">Photos</h1>
+                <!-- People filter -->
+                <div x-show="photosFilters.people.length > 0" class="scroll-fade flex gap-2 pb-3">
+                    <button @click="filterPhotosByPerson(null)" class="flex-shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors" :class="!photosActivePerson ? 'bg-blue-500 text-white border-blue-500' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'">All</button>
+                    <template x-for="p in photosFilters.people.slice(0,20)" :key="p.name">
+                        <button @click="filterPhotosByPerson(p.name)" class="flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-full border transition-colors" :class="photosActivePerson===p.name ? 'bg-blue-500 text-white border-blue-500' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                            <img :src="'/api/faces/'+p.face_id+'/thumbnail'" class="w-5 h-5 rounded-full object-cover" loading="lazy" onerror="this.style.display='none'">
+                            <span class="text-xs" x-text="p.name"></span>
+                        </button>
+                    </template>
+                </div>
+                <!-- Category filter -->
+                <div class="flex gap-1.5 flex-wrap">
+                    <template x-for="c in photosFilters.categories?.slice(0,6)" :key="c.name">
+                        <button @click="filterPhotosByCategory(c.name)" class="text-[11px] px-2.5 py-1 rounded-full border transition-colors" :class="photosActiveCategory===c.name ? 'bg-blue-500 text-white border-blue-500' : 'border-gray-200 dark:border-gray-700 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'" x-text="c.name + ' (' + c.count + ')'"></button>
+                    </template>
                 </div>
             </div>
-            <div class="chat-input-area">
-                <input
-                    type="text"
-                    class="chat-input"
-                    placeholder="Ask about your files..."
-                    x-model="chatInput"
-                    @keydown.enter="sendChat()"
-                >
-                <button class="send-btn" @click="sendChat()" :disabled="!chatInput.trim() || chatLoading">
-                    Send
+            <div class="flex-1 overflow-y-auto px-6 sm:px-10 pb-6" @scroll="onPhotosScroll($event)">
+                <div class="masonry-grid">
+                    <template x-for="photo in photos" :key="photo.id">
+                        <div @click="selectedFile=photo" class="photo-card card-enter">
+                            <img :src="'/api/files/'+photo.id+'/preview'" class="w-full" loading="lazy" onerror="this.parentElement.remove()">
+                            <div class="photo-overlay">
+                                <span class="text-white text-[11px] truncate" x-text="photo.filename"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <div x-show="photosLoading" class="text-center py-8 text-sm text-gray-400">Loading...</div>
+                <div x-show="!photosLoading && photos.length===0" class="text-center py-16">
+                    <div class="text-4xl opacity-40 mb-3">&#x1F4F7;</div>
+                    <div class="text-base font-semibold text-gray-400 mb-1">No photos found</div>
+                    <div class="text-sm text-gray-400">Try a different filter or wait for indexing to complete.</div>
+                </div>
+                <div x-show="photos.length > 0 && photos.length < photosTotal" class="text-center py-4 text-xs text-gray-400" x-text="photos.length + ' of ' + photosTotal + ' photos'"></div>
+            </div>
+        </div>
+
+        <!-- ▸▸▸ PEOPLE ▸▸▸ -->
+        <div x-show="view==='people'" class="p-6 sm:p-10">
+            <h1 class="text-2xl font-bold tracking-tight mb-6">People</h1>
+
+            <!-- Back button when viewing a person -->
+            <div x-show="activePerson" class="mb-4">
+                <button @click="activePerson=null; personPhotos=[]" class="text-sm text-blue-500 hover:text-blue-400 flex items-center gap-1 mb-3">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+                    All People
+                </button>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <h2 class="text-lg font-semibold" x-text="activePerson"></h2>
+                    <span class="text-xs text-gray-400" x-text="personPhotos.length + ' photos'"></span>
+                    <button @click="renamePersonPrompt()" class="text-xs text-blue-500 hover:text-blue-400 font-medium">Rename</button>
+                    <button @click="mergePersonPrompt()" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium">Merge with...</button>
+                </div>
+            </div>
+
+            <!-- Person's photos -->
+            <div x-show="activePerson" class="masonry-grid">
+                <template x-for="photo in personPhotos" :key="photo.id">
+                    <div @click="selectedFile=photo" class="photo-card card-enter">
+                        <img :src="'/api/files/'+photo.id+'/preview'" class="w-full" loading="lazy">
+                    </div>
+                </template>
+            </div>
+
+            <!-- People grid -->
+            <div x-show="!activePerson">
+                <div x-show="people.named?.length > 0" class="mb-6">
+                    <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                        <template x-for="p in people.named" :key="p.name">
+                            <div @click="showPersonPhotos(p.name)" class="card-enter flex flex-col items-center gap-2 cursor-pointer group">
+                                <div class="face-circle w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 ring-2 ring-blue-200 dark:ring-blue-500/30 group-hover:ring-blue-400">
+                                    <img :src="'/api/faces/'+p.face_id+'/thumbnail'" class="w-full h-full object-cover" loading="lazy" onerror="this.src=''">
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-xs font-medium truncate max-w-[80px]" x-text="p.name"></div>
+                                    <div class="text-[10px] text-gray-400" x-text="p.photo_count + ' photos'"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div x-show="people.unnamed?.length > 0">
+                    <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Needs a name</h2>
+                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                        <template x-for="p in people.unnamed.slice(0,24)" :key="p.name">
+                            <div @click="showPersonPhotos(p.name)" class="flex flex-col items-center gap-1.5 cursor-pointer">
+                                <div class="face-circle w-12 h-12 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 ring-2 ring-amber-200 dark:ring-amber-500/30">
+                                    <img :src="'/api/faces/'+p.face_id+'/thumbnail'" class="w-full h-full object-cover" loading="lazy">
+                                </div>
+                                <div class="text-[10px] text-amber-500" x-text="p.name"></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div x-show="!peopleLoading && !people.named?.length && !people.unnamed?.length" class="text-center py-16">
+                    <div class="text-4xl opacity-40 mb-3">&#x1F465;</div>
+                    <div class="text-base font-semibold text-gray-400 mb-1">No people detected yet</div>
+                    <div class="text-sm text-gray-400">Faces are detected automatically as photos are indexed.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ▸▸▸ DOCUMENTS ▸▸▸ -->
+        <div x-show="view==='documents'" class="p-6 sm:p-10">
+            <h1 class="text-2xl font-bold tracking-tight mb-6">Documents</h1>
+
+            <div x-show="!activeDocGroup" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <template x-for="g in documentGroups" :key="g.name">
+                    <div @click="openDocGroup(g.name)" class="card-enter card-lift bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5 cursor-pointer group">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-semibold" x-text="g.name"></h3>
+                            <span class="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full" x-text="g.count + ' files'"></span>
+                        </div>
+                        <div class="space-y-1">
+                            <template x-for="f in g.recent" :key="f.id">
+                                <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                    <span x-text="getFileIcon(f.extension)"></span>
+                                    <span class="truncate" x-text="f.filename"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Document group detail -->
+            <div x-show="activeDocGroup">
+                <button @click="activeDocGroup=null; activeDocFiles=[]" class="text-sm text-blue-500 hover:text-blue-400 flex items-center gap-1 mb-4">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+                    All Documents
+                </button>
+                <h2 class="text-lg font-semibold mb-4" x-text="activeDocGroup"></h2>
+                <div class="space-y-1">
+                    <template x-for="file in activeDocFiles" :key="file.id">
+                        <div @click="selectedFile=file" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white dark:hover:bg-gray-800/50 cursor-pointer transition-colors">
+                            <span class="text-lg" x-text="getFileIcon(file.extension)"></span>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-medium truncate" x-text="file.filename"></div>
+                                <div class="text-xs text-gray-400 truncate" x-text="file.description"></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- ▸▸▸ PROJECTS ▸▸▸ -->
+        <div x-show="view==='projects'" class="p-6 sm:p-10">
+            <div class="flex items-center justify-between mb-6">
+                <h1 class="text-2xl font-bold tracking-tight">Projects</h1>
+                <button @click="scanProjects()" :disabled="projectsLoading" class="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-400 disabled:opacity-40 transition-colors">
+                    <span x-show="!projectsLoading">Scan</span><span x-show="projectsLoading">Scanning...</span>
                 </button>
             </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <template x-for="p in projects" :key="p.path">
+                    <div class="card-enter card-lift bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 p-4">
+                        <div class="flex items-center gap-2 mb-1.5">
+                            <span class="text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" x-text="p.stack"></span>
+                            <span class="font-semibold text-sm truncate" x-text="p.name"></span>
+                        </div>
+                        <div class="text-xs text-gray-400 truncate mb-2" x-text="p.path"></div>
+                        <div class="flex gap-1.5">
+                            <span x-show="p.git_branch" class="text-[11px] px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400" x-text="p.git_branch"></span>
+                            <span x-show="p.package_manager" class="text-[11px] px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400" x-text="p.package_manager"></span>
+                        </div>
+                        <div x-show="p.last_commit_message" class="text-xs text-gray-400 truncate mt-2" x-text="p.last_commit_message"></div>
+                    </div>
+                </template>
+            </div>
+            <div x-show="projects.length===0 && !projectsLoading" class="text-center py-16"><div class="text-4xl opacity-40 mb-3">&#x1F4BB;</div><div class="text-base font-semibold text-gray-400 mb-1">No projects found</div><div class="text-sm text-gray-400">Click Scan to find code projects.</div></div>
         </div>
 
-        <!-- Rename Review View -->
-        <div x-show="view === 'renames'" class="view">
-            <div class="view-header">
-                <h1>Smart Renames</h1>
-                <button
-                    x-show="renameProposals.length > 0"
-                    class="btn btn-primary"
-                    @click="approveAllRenames()"
-                >Approve All</button>
+        <!-- ▸▸▸ SEARCH ▸▸▸ -->
+        <div x-show="view==='search'" class="p-6 sm:p-10">
+            <div class="relative mb-6">
+                <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+                <input type="text" class="w-full pl-12 pr-5 py-4 bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 rounded-2xl text-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder:text-gray-400" placeholder="Search everything..." x-model="searchQuery" @input.debounce.300ms="performSearch()" autofocus>
             </div>
-            <div class="rename-list">
-                <template x-for="proposal in renameProposals" :key="proposal.file_id">
-                    <div class="rename-card">
-                        <div class="rename-names">
-                            <div class="rename-old">
-                                <span class="label">Current:</span>
-                                <span x-text="proposal.current_name"></span>
-                            </div>
-                            <div class="rename-arrow">→</div>
-                            <div class="rename-new">
-                                <span class="label">Suggested:</span>
-                                <span class="suggested" x-text="proposal.suggested_name"></span>
-                            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <template x-for="file in searchResults" :key="file.id">
+                    <div @click="selectedFile=file" class="card-lift bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden cursor-pointer">
+                        <div x-show="isPreviewable(file.extension)" class="aspect-video bg-gray-100 dark:bg-gray-900 overflow-hidden">
+                            <img x-show="isImage(file.extension)" :src="'/api/files/'+file.id+'/preview'" class="w-full h-full object-cover" loading="lazy" onerror="this.parentElement.style.display='none'">
                         </div>
-                        <div class="rename-desc" x-text="proposal.description"></div>
-                        <div class="rename-actions">
-                            <button class="btn btn-success btn-sm" @click="approveRename(proposal.file_id)">Approve</button>
-                            <button class="btn btn-ghost btn-sm" @click="dismissRename(proposal.file_id)">Dismiss</button>
+                        <div class="p-3">
+                            <div class="text-sm font-medium truncate" x-text="file.filename"></div>
+                            <div class="text-xs text-gray-400 line-clamp-2 mt-0.5" x-text="file.description"></div>
+                            <div class="flex gap-1 mt-2">
+                                <span x-show="file.category" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-500" x-text="file.category"></span>
+                            </div>
                         </div>
                     </div>
                 </template>
-                <div x-show="renameProposals.length === 0" class="empty-state">
-                    No pending renames. Files with generic names will appear here with AI-suggested names.
+            </div>
+            <div x-show="!searchQuery" class="text-center py-16"><div class="text-4xl opacity-40 mb-3">&#x1F50D;</div><div class="text-base font-semibold text-gray-400 mb-1">Search everything</div><div class="text-sm text-gray-400 max-w-xs mx-auto">Search by name, content, tags, people, or description.</div></div>
+            <div x-show="searchQuery && searchResults.length===0" class="text-center py-16"><div class="text-4xl opacity-40 mb-3">&#x1F50D;</div><div class="text-sm text-gray-400">No results for "<span x-text="searchQuery"></span>"</div></div>
+        </div>
+
+        <!-- ▸▸▸ ASK ▸▸▸ -->
+        <div x-show="view==='ask'" class="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+            <div class="flex-1 overflow-y-auto p-6 sm:p-10 space-y-3 mx-auto w-full max-w-3xl" id="chatMessages">
+                <div x-show="chatMessages.length===0" class="flex flex-col items-center justify-center min-h-[50vh] text-center">
+                    <div class="text-4xl opacity-40 mb-3">&#x1F4AC;</div>
+                    <div class="text-base font-semibold text-gray-400 mb-1">Ask Tifaw anything</div>
+                    <div class="text-sm text-gray-400 max-w-xs">Ask about your files, photos, or documents in plain English.</div>
+                    <div class="flex flex-wrap gap-2 mt-6">
+                        <button @click="chatInput='What files did I add recently?'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">What files did I add recently?</button>
+                        <button @click="chatInput='Find my invoices'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">Find my invoices</button>
+                        <button @click="chatInput='Show me photos of people'; sendChat()" class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">Photos of people</button>
+                    </div>
                 </div>
+                <template x-for="msg in chatMessages" :key="msg.timestamp">
+                    <div class="flex" :class="msg.role==='user' ? 'justify-end' : 'justify-start'">
+                        <div class="bubble-content max-w-[80%] sm:max-w-[70%] px-4 py-3 text-sm leading-relaxed" :class="msg.role==='user' ? 'bg-blue-500 text-white rounded-2xl rounded-br-md' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-md'" x-html="renderMarkdown(msg.content)"></div>
+                    </div>
+                </template>
+                <div x-show="chatLoading" class="flex justify-start"><div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-md px-4 py-3"><span class="typing-dots"></span></div></div>
+            </div>
+            <div class="flex gap-3 px-6 sm:px-10 py-4 border-t border-gray-100 dark:border-gray-800 mx-auto max-w-3xl w-full">
+                <input type="text" class="flex-1 px-4 py-2.5 bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-gray-400" placeholder="Ask about your files..." x-model="chatInput" @keydown.enter="sendChat()">
+                <button @click="sendChat()" :disabled="!chatInput.trim()||chatLoading" class="px-5 py-2.5 bg-blue-500 text-white text-sm font-medium rounded-xl hover:bg-blue-400 disabled:opacity-40 transition-colors">Send</button>
             </div>
         </div>
 
-        <!-- Projects View -->
-        <div x-show="view === 'projects'" class="view">
-            <h1>Projects</h1>
-            <div class="empty-state">
-                Project scanner coming soon. Will detect and display all your code projects.
+        <!-- ▸▸▸ RENAMES ▸▸▸ -->
+        <div x-show="view==='renames'" class="p-6 sm:p-10">
+            <div class="flex items-center justify-between mb-6">
+                <h1 class="text-2xl font-bold tracking-tight">Smart Renames</h1>
+                <button x-show="renameProposals.length>0" @click="approveAllRenames()" class="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-400 transition-colors">Approve All</button>
+            </div>
+            <div class="space-y-3">
+                <template x-for="p in renameProposals" :key="p.file_id">
+                    <div class="card-enter bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden flex flex-col sm:flex-row">
+                        <div x-show="p.is_image" class="sm:w-32 h-24 sm:h-auto flex-shrink-0 bg-gray-100 dark:bg-gray-900 overflow-hidden"><img :src="'/api/files/'+p.file_id+'/preview'" class="w-full h-full object-cover" loading="lazy"></div>
+                        <div class="p-4 flex-1 min-w-0">
+                            <div class="text-xs text-gray-400 line-through truncate" x-text="p.current_name"></div>
+                            <div class="text-sm font-semibold text-emerald-600 dark:text-emerald-400 truncate" x-text="p.suggested_name"></div>
+                            <p class="text-xs text-gray-500 mt-1 line-clamp-2" x-text="p.description"></p>
+                            <div class="flex gap-2 mt-3">
+                                <button @click="approveRename(p.file_id)" class="px-3 py-1.5 bg-emerald-500 text-white text-xs font-medium rounded-lg hover:bg-emerald-400 transition-colors">Approve</button>
+                                <button @click="dismissRename(p.file_id)" class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-500 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Dismiss</button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <div x-show="renameProposals.length===0" class="text-center py-16"><div class="text-4xl opacity-40 mb-3">&#x2728;</div><div class="text-base font-semibold text-gray-400 mb-1">All caught up</div><div class="text-sm text-gray-400 max-w-xs mx-auto">No pending renames. When Tifaw detects generic filenames, suggestions will appear here.</div></div>
+        </div>
+
+        <!-- ▸▸▸ SETTINGS ▸▸▸ -->
+        <div x-show="view==='settings'" class="p-6 sm:p-10">
+            <div class="flex items-center justify-between mb-6">
+                <h1 class="text-2xl font-bold tracking-tight">Settings</h1>
+                <button @click="saveConfig()" :disabled="configSaving" class="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-400 disabled:opacity-40 transition-colors"><span x-show="!configSaving">Save</span><span x-show="configSaving">Saving...</span></button>
+            </div>
+            <!-- Watch Folders -->
+            <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5 mb-4">
+                <h2 class="text-sm font-semibold mb-0.5">Watch Folders</h2>
+                <p class="text-xs text-gray-400 mb-4">Folders Tifaw monitors for new files.</p>
+                <div class="space-y-2">
+                    <template x-for="(f,i) in configData.watch_folders||[]" :key="i">
+                        <div class="flex items-center gap-2">
+                            <div class="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-500 truncate" x-text="f"></div>
+                            <button @click="openFolderPicker('watch_folders',i)" class="text-xs px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-500 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Change</button>
+                            <button @click="configData.watch_folders.splice(i,1)" class="p-2 text-gray-400 hover:text-red-500 rounded-lg transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                        </div>
+                    </template>
+                    <button @click="openFolderPicker('watch_folders')" class="flex items-center gap-2 w-full px-3 py-2.5 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg text-sm text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>Add folder</button>
+                </div>
+            </div>
+            <!-- Project Dirs -->
+            <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5 mb-4">
+                <h2 class="text-sm font-semibold mb-0.5">Project Directories</h2>
+                <p class="text-xs text-gray-400 mb-4">Directories to scan for code projects.</p>
+                <div class="space-y-2">
+                    <template x-for="(d,i) in configData.project_directories||[]" :key="i">
+                        <div class="flex items-center gap-2">
+                            <div class="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-500 truncate" x-text="d"></div>
+                            <button @click="openFolderPicker('project_directories',i)" class="text-xs px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-500 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Change</button>
+                            <button @click="configData.project_directories.splice(i,1)" class="p-2 text-gray-400 hover:text-red-500 rounded-lg transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                        </div>
+                    </template>
+                    <button @click="openFolderPicker('project_directories')" class="flex items-center gap-2 w-full px-3 py-2.5 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg text-sm text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>Add directory</button>
+                </div>
+            </div>
+            <!-- Toggles -->
+            <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5 mb-4">
+                <h2 class="text-sm font-semibold mb-3">Smart Rename</h2>
+                <div class="space-y-3">
+                    <div class="flex items-center gap-4"><label class="toggle-switch"><input type="checkbox" :checked="configData.rename?.enabled" @change="configData.rename={...(configData.rename||{}),enabled:$event.target.checked}"><span class="toggle-slider"></span></label><div><div class="text-sm">Enable smart renaming</div><div class="text-xs text-gray-400 mt-0.5">Suggest better names for generic filenames</div></div></div>
+                    <div class="flex items-center gap-4"><label class="toggle-switch"><input type="checkbox" :checked="configData.rename?.auto_approve" @change="configData.rename={...(configData.rename||{}),auto_approve:$event.target.checked}"><span class="toggle-slider"></span></label><div><div class="text-sm">Auto-approve renames</div><div class="text-xs text-gray-400 mt-0.5">Rename without asking</div></div></div>
+                </div>
             </div>
         </div>
 
     </main>
 
-    <!-- File Detail Modal -->
-    <div x-show="selectedFile" class="modal-overlay" @click.self="selectedFile = null" x-transition>
-        <div class="modal" x-show="selectedFile">
-            <div class="modal-header">
-                <h2 x-text="selectedFile?.filename"></h2>
-                <button class="modal-close" @click="selectedFile = null">&times;</button>
+    <!-- ═══════════════════════ FILE DETAIL MODAL ═══════════════════════ -->
+    <div x-show="selectedFile" x-transition class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="selectedFile=null">
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto" x-show="selectedFile" x-transition.scale.95
+             x-init="$watch('selectedFile', f => { if (f && isImage(f.extension)) loadFaces(f.id); else fileFaces=[]; })">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+                <h2 class="text-sm font-semibold truncate pr-4" x-text="selectedFile?.filename"></h2>
+                <button @click="selectedFile=null" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">&times;</button>
             </div>
-            <div class="modal-body">
-                <div class="detail-row">
-                    <span class="detail-label">Description</span>
-                    <span x-text="selectedFile?.description || 'Not yet analyzed'"></span>
+            <div x-show="selectedFile && isPreviewable(selectedFile?.extension)" class="bg-gray-100 dark:bg-gray-900/50">
+                <img x-show="selectedFile && isImage(selectedFile?.extension)" :src="selectedFile ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full max-h-64 object-contain" loading="lazy">
+                <video x-show="selectedFile && isVideo(selectedFile?.extension)" :src="selectedFile ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full max-h-64" controls preload="metadata"></video>
+            </div>
+            <!-- Faces -->
+            <div x-show="selectedFile && isImage(selectedFile?.extension)" class="px-5 pt-4">
+                <div class="flex items-center justify-between mb-2"><span class="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">People</span><button x-show="fileFaces.length===0" @click="detectFaces(selectedFile?.id)" :disabled="facesLoading" class="text-[11px] text-blue-500 font-medium disabled:opacity-40"><span x-show="!facesLoading">Detect</span><span x-show="facesLoading">...</span></button></div>
+                <div x-show="fileFaces.length>0" class="flex flex-wrap gap-3 mb-2">
+                    <template x-for="face in fileFaces" :key="face.id">
+                        <div class="flex flex-col items-center gap-1 w-16">
+                            <div class="w-12 h-12 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 ring-2" :class="isPlaceholderLabel(face.label)?'ring-amber-300 dark:ring-amber-500/50':'ring-blue-300 dark:ring-blue-500/50'"><img x-show="face.has_thumbnail" :src="'/api/faces/'+face.id+'/thumbnail'" class="w-full h-full object-cover" loading="lazy"></div>
+                            <template x-if="face.label && !isPlaceholderLabel(face.label)"><span class="text-[10px] font-medium text-blue-600 dark:text-blue-400 truncate w-full text-center" x-text="face.label"></span></template>
+                            <template x-if="!face.label || isPlaceholderLabel(face.label)"><input type="text" :placeholder="face.label||'Name'" x-model="labelInput[face.id]" @keydown.enter="labelFace(face.id)" @blur="if(labelInput[face.id]?.trim()) labelFace(face.id)" class="w-full text-[10px] px-1 py-0.5 bg-gray-50 dark:bg-gray-800 border border-amber-300 dark:border-amber-500/40 rounded text-center outline-none focus:border-blue-500 placeholder:text-amber-400"></template>
+                        </div>
+                    </template>
                 </div>
-                <div class="detail-row">
-                    <span class="detail-label">Category</span>
-                    <span class="category-badge" x-text="selectedFile?.category"></span>
+            </div>
+            <div class="p-5 space-y-2.5">
+                <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Description</span><span class="text-sm text-gray-600 dark:text-gray-300" x-text="selectedFile?.description||'Not yet analyzed'"></span></div>
+                <div class="flex gap-3 items-center"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0">Category</span><span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" x-text="selectedFile?.category"></span></div>
+                <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Tags</span><div class="flex flex-wrap gap-1"><template x-for="tag in (selectedFile?.tags||[])" :key="tag"><span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-500" x-text="tag"></span></template></div></div>
+                <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Path</span><span class="text-xs text-gray-400 break-all" x-text="selectedFile?.path"></span></div>
+                <div class="pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 flex-wrap">
+                    <button @click="revealFile(selectedFile?.id)" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/></svg>
+                        Finder
+                    </button>
+                    <button @click="reindexFile(selectedFile?.id)" class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Re-index</button>
+                    <div class="flex-1"></div>
+                    <button @click="deleteFile(selectedFile?.id, true)" class="flex items-center gap-1 px-3 py-1.5 text-red-500 text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                        Trash
+                    </button>
                 </div>
-                <div class="detail-row">
-                    <span class="detail-label">Tags</span>
-                    <div class="file-tags">
-                        <template x-for="tag in (selectedFile?.tags || [])" :key="tag">
-                            <span class="tag" x-text="tag"></span>
-                        </template>
-                    </div>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Path</span>
-                    <span class="file-path" x-text="selectedFile?.path"></span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Status</span>
-                    <span class="status-badge" :class="selectedFile?.status" x-text="selectedFile?.status"></span>
-                </div>
-                <div class="modal-actions">
-                    <button class="btn btn-ghost" @click="reindexFile(selectedFile?.id)">Re-index</button>
-                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════ FOLDER PICKER ═══════════════════════ -->
+    <div x-show="folderPicker.open" x-transition class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="folderPicker.open=false">
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-lg max-h-[70vh] flex flex-col shadow-2xl" x-show="folderPicker.open" x-transition.scale.95>
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800"><h2 class="text-sm font-semibold">Choose a folder</h2><button @click="folderPicker.open=false" class="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">&times;</button></div>
+            <div class="mx-4 mt-3 px-3 py-2 bg-blue-50 dark:bg-blue-500/10 rounded-lg text-xs text-blue-600 dark:text-blue-400 font-mono break-all" x-text="folderPicker.path"></div>
+            <div class="flex-1 overflow-y-auto px-3 py-2">
+                <button x-show="folderPicker.parent" @click="browseTo(folderPicker.parent)" class="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4.5 15.75l7.5-7.5 7.5 7.5"/></svg>Go up</button>
+                <template x-for="dir in folderPicker.dirs" :key="dir.path"><button @click="browseTo(dir.path)" class="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 text-left">&#x1F4C1; <span x-text="dir.name"></span></button></template>
+                <div x-show="folderPicker.dirs.length===0" class="text-center py-8 text-sm text-gray-400">No subdirectories</div>
+            </div>
+            <div class="flex justify-end gap-2 px-5 py-3 border-t border-gray-100 dark:border-gray-800">
+                <button @click="folderPicker.open=false" class="px-4 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Cancel</button>
+                <button @click="selectFolder()" class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-400 transition-colors">Select</button>
             </div>
         </div>
     </div>
