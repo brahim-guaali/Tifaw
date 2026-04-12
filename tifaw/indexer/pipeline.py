@@ -64,6 +64,18 @@ async def process_file(
     if metadata and metadata.get("date_taken"):
         created_at = metadata["date_taken"]
 
+    # Resolve GPS coordinates to location name
+    if metadata and metadata.get("gps_latitude") and metadata.get("gps_longitude"):
+        try:
+            location = await _resolve_location(
+                metadata["gps_latitude"], metadata["gps_longitude"], db, llm
+            )
+            if location:
+                metadata["location_city"] = location.get("city")
+                metadata["location_country"] = location.get("country")
+        except Exception:
+            logger.debug("Location resolution failed for %s", path.name)
+
     metadata_json = json.dumps(metadata) if metadata else None
 
     # Upsert file record
@@ -123,6 +135,41 @@ async def process_file(
         analysis.tags,
         f", rename→{suggested_name}" if suggested_name else "",
     )
+
+
+async def _resolve_location(
+    lat: float, lng: float, db: Database, llm: OllamaClient
+) -> dict | None:
+    """Resolve GPS coordinates to city/country using cached LLM lookups."""
+    # Round to 2 decimal places (~1km precision) for cache key
+    cache_key = f"geo:{round(lat, 2)},{round(lng, 2)}"
+
+    # Check cache in settings table
+    cursor = await db.db.execute(
+        "SELECT value FROM settings WHERE key=?", (cache_key,)
+    )
+    row = await cursor.fetchone()
+    if row:
+        return json.loads(row["value"])
+
+    # Ask LLM
+    result = await llm.generate_json(
+        prompt=f"GPS coordinates: latitude {lat}, longitude {lng}. What city and country is this location in?",
+        system='Respond with ONLY a JSON object: {"city": "city name", "country": "country name"}',
+    )
+
+    city = result.get("city")
+    country = result.get("country")
+    if city and country:
+        location = {"city": city, "country": country}
+        # Cache result
+        await db.db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (cache_key, json.dumps(location)),
+        )
+        await db.db.commit()
+        return location
+    return None
 
 
 async def _detect_and_match_faces(
