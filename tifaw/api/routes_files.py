@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -94,3 +97,58 @@ async def preview_file(file_id: int):
 
     media_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
     return FileResponse(path, media_type=media_type, filename=path.name)
+
+
+@router.post("/files/{file_id}/reveal")
+async def reveal_file(file_id: int):
+    """Open the file's parent folder in Finder and select the file."""
+    from tifaw.main import db
+
+    file = await db.get_file(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    path = Path(file["path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File no longer exists on disk")
+
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+    elif sys.platform == "win32":
+        subprocess.Popen(["explorer", "/select,", str(path)])
+    else:
+        # Linux: open parent folder
+        subprocess.Popen(["xdg-open", str(path.parent)])
+
+    return {"status": "revealed", "path": str(path)}
+
+
+@router.delete("/files/{file_id}")
+async def delete_file(file_id: int, from_disk: bool = Query(default=False)):
+    """Delete a file from the database, and optionally from disk."""
+    from tifaw.main import db
+
+    file = await db.get_file(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if from_disk:
+        path = Path(file["path"])
+        if path.exists():
+            try:
+                if sys.platform == "darwin":
+                    # Move to Trash on macOS instead of permanent delete
+                    subprocess.run(
+                        ["osascript", "-e",
+                         f'tell application "Finder" to delete POSIX file "{path}"'],
+                        check=True, capture_output=True,
+                    )
+                else:
+                    os.remove(path)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to delete file: {e}")
+
+    await db.db.execute("DELETE FROM files WHERE id=?", (file_id,))
+    await db.db.commit()
+
+    return {"status": "deleted", "file_id": file_id, "from_disk": from_disk}

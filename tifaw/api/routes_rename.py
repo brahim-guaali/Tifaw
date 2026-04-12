@@ -16,13 +16,25 @@ async def get_pending_renames():
     files = await db.get_pending_renames()
     proposals = []
     for f in files:
+        tags = f.get("tags")
+        if isinstance(tags, str):
+            try:
+                tags = json.loads(tags)
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+
         proposals.append({
             "file_id": f["id"],
             "current_name": f["filename"],
             "suggested_name": f["suggested_name"],
             "path": f["path"],
+            "extension": f.get("extension", ""),
+            "size_bytes": f.get("size_bytes"),
             "description": f["description"],
-            "thumbnail_path": f.get("thumbnail_path"),
+            "tags": tags or [],
+            "category": f.get("category"),
+            "content_preview": f.get("content_preview"),
+            "is_image": f.get("extension", "") in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"),
         })
     return {"proposals": proposals, "count": len(proposals)}
 
