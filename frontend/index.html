@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tifaw</title>
+    <link rel="icon" type="image/png" href="/icon.png">
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script>
     tailwind.config = {
@@ -21,7 +22,10 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="/styles.css">
     <script>
-    (function(){ if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark'); })();
+    (function(){
+        if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark');
+        if (localStorage.getItem('privacyMode') === 'true') document.documentElement.classList.add('privacy');
+    })();
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -32,6 +36,12 @@
     <!-- Toast -->
     <div x-show="toast.show" x-transition class="fixed top-5 left-1/2 -translate-x-1/2 z-[200] px-5 py-2.5 rounded-xl text-sm font-medium shadow-xl" :class="toast.type==='success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'" x-text="toast.message"></div>
 
+    <!-- Privacy Mode Indicator -->
+    <div class="privacy-badge fixed top-3 right-3 z-[100] items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-full shadow-lg cursor-pointer" @click="togglePrivacyMode()" title="Click to disable privacy mode">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"/></svg>
+        Privacy Mode
+    </div>
+
     <!-- Mobile Backdrop -->
     <div x-show="sidebarOpen" x-transition.opacity @click="sidebarOpen=false" class="fixed inset-0 bg-black/30 z-40 lg:hidden"></div>
 
@@ -39,7 +49,10 @@
     <div class="fixed top-0 left-0 right-0 h-14 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex items-center px-4 z-30 lg:hidden">
         <button @click="sidebarOpen=!sidebarOpen" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
         <span class="ml-3 font-semibold text-sm">Tifaw</span>
-        <button @click="toggleDarkMode()" class="ml-auto p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
+        <button @click="togglePrivacyMode()" class="ml-auto p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" :class="privacyMode ? 'text-amber-500' : 'text-gray-400'">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"/></svg>
+        </button>
+        <button @click="toggleDarkMode()" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
             <svg x-show="darkMode" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41m12.73-12.73l1.41-1.41"/></svg>
             <svg x-show="!darkMode" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
         </button>
@@ -49,9 +62,7 @@
     <nav :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'" class="fixed inset-y-0 left-0 w-56 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col z-50 transition-transform duration-200 lg:translate-x-0 lg:static lg:z-auto">
         <div class="p-4 pb-2">
             <div class="flex items-center gap-2.5">
-                <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-sm shadow-blue-500/30">
-                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h10M4 18h13"/></svg>
-                </div>
+                <img src="/icon.png" class="w-8 h-8 rounded-xl shadow-sm shadow-blue-500/30">
                 <span class="text-[15px] font-bold tracking-tight">Tifaw</span>
             </div>
         </div>
@@ -107,10 +118,15 @@
                 <span class="w-2 h-2 rounded-full" :class="status.ollama_connected ? 'bg-emerald-400' : 'bg-red-400'"></span>
                 <span class="text-[11px] text-gray-400" x-text="status.ollama_connected ? 'AI Online' : 'AI Offline'"></span>
             </div>
-            <button @click="toggleDarkMode()" class="hidden lg:flex p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400" title="Toggle theme">
-                <svg x-show="darkMode" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41m12.73-12.73l1.41-1.41"/></svg>
-                <svg x-show="!darkMode" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
-            </button>
+            <div class="hidden lg:flex items-center gap-1">
+                <button @click="togglePrivacyMode()" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" :class="privacyMode ? 'text-amber-500' : 'text-gray-400'" :title="privacyMode ? 'Privacy mode ON' : 'Privacy mode OFF'">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"/></svg>
+                </button>
+                <button @click="toggleDarkMode()" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400" title="Toggle theme">
+                    <svg x-show="darkMode" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41m12.73-12.73l1.41-1.41"/></svg>
+                    <svg x-show="!darkMode" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -500,13 +516,22 @@
 
         <!-- ▸▸▸ DOCUMENTS ▸▸▸ -->
         <div x-show="view==='documents'" class="p-6 sm:p-10">
-            <h1 class="text-2xl font-bold tracking-tight mb-6">Documents</h1>
+            <div class="flex items-center justify-between mb-6">
+                <h1 class="text-2xl font-bold tracking-tight">Documents</h1>
+                <button x-show="!activeDocGroup" @click="discoverGroups()" :disabled="discoveringGroups" class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                    <span x-show="!discoveringGroups">Discover Groups</span>
+                    <span x-show="discoveringGroups">Analyzing...</span>
+                </button>
+            </div>
 
             <div x-show="!activeDocGroup" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <template x-for="g in documentGroups" :key="g.name">
-                    <div @click="openDocGroup(g.name)" class="card-enter card-lift bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5 cursor-pointer group">
+                    <div @click="openDocGroup(g.name, g.tag)" class="card-enter card-lift bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5 cursor-pointer group">
                         <div class="flex items-center justify-between mb-3">
-                            <h3 class="font-semibold" x-text="g.name"></h3>
+                            <h3 class="font-semibold">
+                                <span x-show="g.icon && g.dynamic" x-text="g.icon" class="mr-1"></span>
+                                <span x-text="g.name"></span>
+                            </h3>
                             <span class="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full" x-text="g.count + ' files'"></span>
                         </div>
                         <div class="space-y-1">
@@ -714,7 +739,7 @@
         <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto" x-show="selectedFile" x-transition.scale.95
              x-init="$watch('selectedFile', f => { if (f && isImage(f.extension)) loadFaces(f.id); else fileFaces=[]; })">
             <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-                <h2 class="text-sm font-semibold truncate pr-4" x-text="selectedFile?.filename"></h2>
+                <h2 class="text-sm font-semibold truncate pr-4 privacy-blur" x-text="selectedFile?.filename"></h2>
                 <button @click="selectedFile=null" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">&times;</button>
             </div>
             <div x-show="selectedFile && isPreviewable(selectedFile?.extension)" class="bg-gray-100 dark:bg-gray-900/50">
@@ -738,7 +763,7 @@
                 <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Description</span><span class="text-sm text-gray-600 dark:text-gray-300" x-text="selectedFile?.description||'Not yet analyzed'"></span></div>
                 <div class="flex gap-3 items-center"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0">Category</span><span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" x-text="selectedFile?.category"></span></div>
                 <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Tags</span><div class="flex flex-wrap gap-1"><template x-for="tag in (selectedFile?.tags||[])" :key="tag"><span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-500" x-text="tag"></span></template></div></div>
-                <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Path</span><span class="text-xs text-gray-400 break-all" x-text="selectedFile?.path"></span></div>
+                <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Path</span><span class="text-xs text-gray-400 break-all privacy-blur" x-text="selectedFile?.path"></span></div>
                 <div class="pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 flex-wrap">
                     <button @click="revealFile(selectedFile?.id)" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/></svg>

@@ -2,6 +2,7 @@ function app() {
     return {
         view: 'overview',
         darkMode: false,
+        privacyMode: false,
         sidebarOpen: false,
 
         // Overview
@@ -26,7 +27,9 @@ function app() {
         // Documents
         documentGroups: [],
         documentsLoading: false,
+        discoveringGroups: false,
         activeDocGroup: null,
+        activeDocGroupTag: null,
         activeDocFiles: [],
 
         // Search
@@ -82,7 +85,9 @@ function app() {
         initTheme() {
             const stored = localStorage.getItem('theme');
             this.darkMode = stored === 'dark';
+            this.privacyMode = localStorage.getItem('privacyMode') === 'true';
             this.applyTheme();
+            this.applyPrivacy();
         },
         applyTheme() {
             if (this.darkMode) document.documentElement.classList.add('dark');
@@ -92,6 +97,15 @@ function app() {
             this.darkMode = !this.darkMode;
             localStorage.setItem('theme', this.darkMode ? 'dark' : 'light');
             this.applyTheme();
+        },
+        togglePrivacyMode() {
+            this.privacyMode = !this.privacyMode;
+            localStorage.setItem('privacyMode', this.privacyMode ? 'true' : 'false');
+            this.applyPrivacy();
+        },
+        applyPrivacy() {
+            if (this.privacyMode) document.documentElement.classList.add('privacy');
+            else document.documentElement.classList.remove('privacy');
         },
 
         // ─── Navigation ───────────────────────────────────
@@ -273,6 +287,7 @@ function app() {
         async loadDocuments() {
             this.documentsLoading = true;
             this.activeDocGroup = null;
+            this.activeDocGroupTag = null;
             this.activeDocFiles = [];
             try {
                 const r = await fetch('/api/documents');
@@ -282,13 +297,31 @@ function app() {
             this.documentsLoading = false;
         },
 
-        async openDocGroup(name) {
+        async openDocGroup(name, tag = null) {
             this.activeDocGroup = name;
+            this.activeDocGroupTag = tag;
             try {
-                const r = await fetch(`/api/documents/${encodeURIComponent(name)}`);
+                let url = `/api/documents/${encodeURIComponent(name)}`;
+                if (tag) url += `?tag=${encodeURIComponent(tag)}`;
+                const r = await fetch(url);
                 const data = await r.json();
                 this.activeDocFiles = data.files || [];
             } catch (e) { console.error('Doc group failed:', e); }
+        },
+
+        async discoverGroups() {
+            this.discoveringGroups = true;
+            try {
+                const r = await fetch('/api/documents/discover', { method: 'POST' });
+                const data = await r.json();
+                if (data.discovered > 0) {
+                    this.showToast(`Discovered ${data.discovered} new groups`);
+                    await this.loadDocuments();
+                } else {
+                    this.showToast('No new patterns found (need 10+ files with same tags)', 'error');
+                }
+            } catch (e) { this.showToast('Discovery failed', 'error'); }
+            this.discoveringGroups = false;
         },
 
         // ─── Search ───────────────────────────────────────

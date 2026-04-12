@@ -4,6 +4,49 @@
 
 html { transition: background-color 0.3s ease, color 0.2s ease; }
 
+/* ═══ Privacy Mode ═══ */
+/* Blur all images (photos, thumbnails, face crops, previews) */
+.privacy img:not(.privacy-exempt),
+.privacy video {
+    filter: blur(16px) !important;
+    transition: filter 0.3s;
+}
+
+/* Blur filenames, paths, descriptions, person names */
+.privacy .privacy-blur,
+.privacy [x-text*="filename"],
+.privacy [x-text*="file.filename"],
+.privacy [x-text*="file.path"],
+.privacy [x-text*="selectedFile?.filename"],
+.privacy [x-text*="selectedFile?.path"],
+.privacy [x-text*="activePerson"],
+.privacy [x-text*="p.name"],
+.privacy [x-text*="pair.person_a"],
+.privacy [x-text*="pair.person_b"] {
+    filter: blur(6px) !important;
+    user-select: none;
+    transition: filter 0.3s;
+}
+
+/* Blur text inside bubbles (chat), file detail descriptions */
+.privacy .bubble-content {
+    filter: blur(5px) !important;
+}
+
+/* Blur the leaflet map markers/popups */
+.privacy .leaflet-marker-pane,
+.privacy .leaflet-popup-pane {
+    filter: blur(10px) !important;
+}
+
+/* Privacy indicator badge */
+.privacy-badge {
+    display: none;
+}
+.privacy .privacy-badge {
+    display: flex;
+}
+
 /* Indexing progress bar shimmer */
 .indexing-progress {
     background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%);

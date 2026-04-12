@@ -1,6 +1,10 @@
-# Tifaw
+<p align="center">
+  <img src="frontend/icon.png" width="128" height="128" alt="Tifaw">
+</p>
 
-**Your laptop's story, powered by local AI.**
+<h1 align="center">Tifaw</h1>
+
+<p align="center"><strong>Your laptop's story, powered by local AI.</strong></p>
 
 Tifaw (ⵜⵉⴼⴰⵡ) - meaning "clarity" or "radiance" in Tamazight (Amazigh/Berber) - is a local AI desktop assistant that helps you understand everything on your machine. It automatically analyzes, categorizes, and organizes your files using Google's Gemma 4 model running entirely on your laptop through Ollama. No cloud, no telemetry, no subscriptions.
 

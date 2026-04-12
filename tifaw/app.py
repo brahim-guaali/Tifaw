@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import logging
 import socket
+import subprocess
 import threading
 import time
+from pathlib import Path
 
 import uvicorn
 
@@ -38,7 +40,53 @@ def _wait_for_server(timeout: int = 15):
     return False
 
 
+def _set_macos_branding():
+    """Set the macOS dock icon, app name, and About panel."""
+    try:
+        from AppKit import NSApplication, NSImage
+        from Foundation import NSBundle
+
+        app = NSApplication.sharedApplication()
+
+        # Set dock icon and About panel icon
+        icon_path = Path(__file__).parent.parent / "frontend" / "icon.png"
+        if icon_path.exists():
+            icon = NSImage.alloc().initWithContentsOfFile_(str(icon_path))
+            if icon:
+                app.setApplicationIconImage_(icon)
+
+        # Override bundle info for About panel and menu bar
+        bundle = NSBundle.mainBundle()
+        info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
+        if info:
+            info["CFBundleName"] = "Tifaw"
+            info["CFBundleDisplayName"] = "Tifaw"
+            info["CFBundleShortVersionString"] = "0.1.0"
+            info["CFBundleVersion"] = "0.1.0"
+            info["NSHumanReadableCopyright"] = "Tifaw — Your laptop's story, powered by local AI."
+
+        logger.info("macOS branding set (icon + app name)")
+    except ImportError:
+        logger.debug("AppKit not available, skipping macOS branding")
+    except Exception as e:
+        logger.debug("Failed to set macOS branding: %s", e)
+
+
 def main():
+    # Set app name BEFORE any AppKit/webview initialization
+    try:
+        from Foundation import NSBundle, NSProcessInfo
+        # Set bundle name (affects menu bar)
+        bundle = NSBundle.mainBundle()
+        info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
+        if info:
+            info["CFBundleName"] = "Tifaw"
+            info["CFBundleDisplayName"] = "Tifaw"
+        # Set process name (affects dock tooltip)
+        NSProcessInfo.processInfo().setProcessName_("Tifaw")
+    except Exception:
+        pass
+
     import webview
 
     # Start server in background unless it's already running
@@ -52,6 +100,9 @@ def main():
             return
     else:
         logger.info("Server already running on port %d", PORT)
+
+    # Set custom dock icon
+    _set_macos_branding()
 
     logger.info("Opening Tifaw window...")
     webview.create_window(
