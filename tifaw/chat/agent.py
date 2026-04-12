@@ -9,32 +9,24 @@ from tifaw.models.database import Database
 
 logger = logging.getLogger(__name__)
 
-MAX_ITERATIONS = 5
+MAX_ITERATIONS = 3
 
 SYSTEM_PROMPT = """\
 You are **Tifaw**, a local AI file assistant running on the user's Mac.
 
-You help users find, understand, and organize their files that have been indexed \
-by the Tifaw system.  You have access to a set of tools that let you query the \
-local file database.
+You help users find, understand, and organize their files — including photos, \
+documents, code, screenshots, and all other file types. Real data from the database \
+is provided below your question.
 
 Guidelines:
-- When a user asks about files, USE the tools to look up real data — do NOT guess.
-- You can chain multiple tool calls in a single turn if needed.
-- After gathering information, synthesize a clear, concise answer.
+- Use the provided database data to answer — do NOT guess or make up files.
 - If no results are found, say so honestly.
-- When the user asks about photos with specific people, first call `list_people` \
-to find the correct label/name, then call `find_photos` with that name.
-- For location queries, the location is searched in file descriptions, tags, and filenames.
-- For date queries, you can use `year`, `date_from`, or `date_to` in `find_photos`.
-
-IMPORTANT — Rich responses:
-- When showing photos, include an image grid using this HTML format for EACH photo:
-  <div class="chat-photo" data-id="FILE_ID"><img src="/api/files/FILE_ID/preview"></div>
-  Wrap multiple photos in: <div class="chat-photo-grid">...</div>
-- When showing file lists, use markdown tables or bullet lists.
-- When showing stats or counts, use bold text.
-- Always be friendly, concise, and helpful.
+- Be friendly, concise, and helpful.
+- When listing files, include their filename and description.
+- When showing photos, use this HTML: \
+<div class="chat-photo-grid"><div class="chat-photo"><img src="/api/files/ID/preview"></div></div>
+- NEVER delete files without explicit user confirmation. List the files first and ask. \
+Only when the user confirms, respond with DELETE_CONFIRMED:[id1,id2,id3].
 """
 
 # ---------------------------------------------------------------------------
@@ -182,16 +174,9 @@ TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "query_database",
             "description": (
-                "Run a read-only SQL query against the database for advanced questions. "
-                "Tables: files (id, path, filename, extension, size_bytes, category, "
-                "description, tags, metadata, created_at, modified_at, status), "
-                "faces (id, file_id, label, confidence), "
-                "known_people (name, face_count), "
-                "projects (path, name, description, stack). "
-                "The metadata column is JSON with keys like: date_taken, gps_latitude, "
-                "gps_longitude, camera_make, camera_model, image_width, image_height, "
-                "iso, aperture, focal_length, author, title, page_count. "
-                "Use json_extract(metadata, '$.key') to access metadata fields."
+                "Run a read-only SELECT query. Tables: files(id,filename,category,description,tags,metadata,created_at), "
+                "faces(file_id,label), known_people(name,face_count), projects(name,stack). "
+                "metadata is JSON: use json_extract(metadata,'$.key')."
             ),
             "parameters": {
                 "type": "object",
@@ -202,6 +187,28 @@ TOOLS: list[dict[str, Any]] = [
                     },
                 },
                 "required": ["sql"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_files",
+            "description": (
+                "Delete files by their database IDs. Files are moved to Trash by default. "
+                "IMPORTANT: Only call this AFTER you have listed the files and the user "
+                "has explicitly confirmed they want to delete them."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "List of file database IDs to delete.",
+                    },
+                },
+                "required": ["file_ids"],
             },
         },
     },
@@ -317,6 +324,9 @@ async def _execute_tool(name: str, arguments: dict[str, Any], db: Database) -> s
 
             return json.dumps(stats)
 
+        elif name == "delete_files":
+            return await _delete_files(arguments, db)
+
         elif name == "query_database":
             return await _query_database(arguments, db)
 
@@ -428,6 +438,17 @@ async def _list_people(db: Database) -> str:
     return json.dumps({"count": len(people), "people": people})
 
 
+async def _delete_files(arguments: dict[str, Any], db: Database) -> str:
+    """Delete files by ID, moving them to Trash."""
+    file_ids = arguments.get("file_ids", [])
+    if not file_ids:
+        return json.dumps({"error": "No file IDs provided"})
+
+    from tifaw.cleanup.stale import delete_files
+    result = await delete_files(file_ids, db)
+    return json.dumps(result)
+
+
 async def _query_database(arguments: dict[str, Any], db: Database) -> str:
     """Run a read-only SQL query."""
     sql = arguments.get("sql", "").strip()
@@ -459,52 +480,133 @@ async def _query_database(arguments: dict[str, Any], db: Database) -> str:
 # ---------------------------------------------------------------------------
 
 
+async def _gather_context(user_message: str, db: Database) -> str:
+    """Pre-fetch relevant data based on the user's question to include in the prompt."""
+    context_parts = []
+    msg_lower = user_message.lower().strip()
+
+    # Skip context gathering for simple greetings/conversational messages
+    greetings = {"hi", "hello", "hey", "thanks", "thank you", "ok", "okay", "yes", "no",
+                 "sure", "bye", "good", "great", "nice", "cool", "wow"}
+    if msg_lower in greetings or len(msg_lower) < 4:
+        return ""
+
+    # Include basic stats
+    stats = await db.get_stats()
+    context_parts.append(f"System: {stats['total_files']} files, {stats['indexed_files']} indexed.")
+
+    # Search for relevant files
+    stop_words = {
+        "the", "and", "for", "from", "with", "that", "this", "all", "are",
+        "can", "you", "want", "delete", "show", "find", "get", "have", "help",
+        "please", "what", "where", "when", "how", "who", "which", "my", "me",
+        "our", "your", "their", "some", "any", "about", "like", "just", "also",
+    }
+    keywords = [w for w in msg_lower.split() if len(w) > 2 and w not in stop_words]
+    if keywords:
+        query = " ".join(keywords[:3])
+        results = await db.search_files(query, limit=10)
+        if results:
+            files_info = []
+            for r in results:
+                files_info.append(
+                    f"  - [id={r['id']}] {r['filename']} (category: {r.get('category')}, "
+                    f"desc: {(r.get('description') or '')[:80]})"
+                )
+            context_parts.append(f"Search results for '{query}':\n" + "\n".join(files_info))
+
+    # If asking about people
+    if any(w in msg_lower for w in ["people", "person", "who", "face", "photo"]):
+        d = db.db
+        rows = await (await d.execute(
+            "SELECT label, COUNT(DISTINCT file_id) as count FROM faces "
+            "WHERE label IS NOT NULL AND label NOT LIKE 'Person %' "
+            "GROUP BY label ORDER BY count DESC LIMIT 10"
+        )).fetchall()
+        if rows:
+            people = [f"  - {r['label']} ({r['count']} photos)" for r in rows]
+            context_parts.append("Known people:\n" + "\n".join(people))
+
+    # If asking about categories/types
+    if any(w in msg_lower for w in ["category", "type", "kind", "screenshot", "document", "image"]):
+        d = db.db
+        cats = await (await d.execute(
+            "SELECT category, COUNT(*) as count FROM files WHERE status='indexed' "
+            "AND category IS NOT NULL GROUP BY category ORDER BY count DESC"
+        )).fetchall()
+        cat_info = [f"  - {r['category']}: {r['count']} files" for r in cats]
+        context_parts.append("Categories:\n" + "\n".join(cat_info))
+
+    # If asking about screenshots specifically
+    if "screenshot" in msg_lower:
+        d = db.db
+        rows = await (await d.execute(
+            "SELECT id, filename, description, created_at FROM files "
+            "WHERE category='Screenshots' AND status='indexed' "
+            "ORDER BY created_at DESC LIMIT 20"
+        )).fetchall()
+        if rows:
+            ss = [f"  - [id={r['id']}] {r['filename']} ({(r['created_at'] or '')[:10]})" for r in rows]
+            context_parts.append(f"Screenshots ({len(rows)} shown of total):\n" + "\n".join(ss))
+
+    # If asking to delete — include a reminder
+    if any(w in msg_lower for w in ["delete", "remove", "clean", "trash"]):
+        context_parts.append(
+            "DELETE CAPABILITY: You can delete files. List the files first, "
+            "then ask the user to confirm. If they confirm, respond with exactly: "
+            "DELETE_CONFIRMED:[id1,id2,id3] and the system will handle the deletion."
+        )
+
+    return "\n\n".join(context_parts)
+
+
 async def run_agent(
     user_message: str,
     db: Database,
     llm: OllamaClient,
 ) -> str:
-    """Run the ReAct agent loop and return the final text response."""
+    """Run the chat agent with pre-fetched context (no tool calling for speed)."""
+    # Get user identity
+    system = SYSTEM_PROMPT
+    try:
+        cursor = await db.db.execute("SELECT value FROM settings WHERE key='user_identity'")
+        row = await cursor.fetchone()
+        if row and row["value"]:
+            system += f"\n\nThe user's name is {row['value']}. Address them by name when appropriate."
+    except Exception:
+        pass
+
+    # Pre-fetch relevant context
+    context = await _gather_context(user_message, db)
+
+    prompt = user_message
+    if context:
+        prompt = f"{user_message}\n\n--- DATA FROM YOUR DATABASE ---\n{context}"
+
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_message},
+        {"role": "system", "content": system},
+        {"role": "user", "content": prompt},
     ]
 
-    for iteration in range(MAX_ITERATIONS):
-        logger.info("Agent iteration %d", iteration + 1)
+    logger.info("Chat request: %s (context: %d chars)", user_message[:100], len(context))
 
-        assistant_msg = await llm.chat(messages, tools=TOOLS, temperature=0.4)
+    assistant_msg = await llm.chat(messages, temperature=0.4)
+    response = assistant_msg.get("content", "")
 
-        # Append the full assistant message to history
-        messages.append(assistant_msg)
+    # Check for delete confirmation pattern
+    if "DELETE_CONFIRMED:" in response:
+        try:
+            import re
+            match = re.search(r'DELETE_CONFIRMED:\[([^\]]+)\]', response)
+            if match:
+                ids = [int(x.strip()) for x in match.group(1).split(",")]
+                result = await _delete_files({"file_ids": ids}, db)
+                result_data = json.loads(result)
+                deleted = result_data.get("deleted", 0)
+                # Remove the delete command from response and add result
+                response = re.sub(r'DELETE_CONFIRMED:\[[^\]]+\]', '', response).strip()
+                response += f"\n\nDone! Moved {deleted} file(s) to Trash."
+        except Exception as e:
+            logger.error("Delete from chat failed: %s", e)
 
-        tool_calls = assistant_msg.get("tool_calls")
-        if not tool_calls:
-            # No tool calls — the model produced a final answer
-            return assistant_msg.get("content", "")
-
-        # Execute each tool call and append results
-        for tc in tool_calls:
-            fn = tc["function"]
-            fn_name = fn["name"]
-            fn_args = fn.get("arguments", {})
-            if isinstance(fn_args, str):
-                fn_args = json.loads(fn_args)
-
-            logger.info("Tool call: %s(%s)", fn_name, fn_args)
-            result = await _execute_tool(fn_name, fn_args, db)
-            logger.info("Tool result preview: %s", result[:200])
-
-            messages.append(
-                {
-                    "role": "tool",
-                    "content": result,
-                }
-            )
-
-    # If we exhausted iterations, return whatever the last assistant content was
-    for msg in reversed(messages):
-        if msg.get("role") == "assistant" and msg.get("content"):
-            return msg["content"]
-
-    return "I was unable to complete the request within the allowed number of steps."
+    return response

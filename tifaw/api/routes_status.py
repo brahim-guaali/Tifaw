@@ -74,6 +74,28 @@ async def reindex_all():
     return {"queued": len(rows)}
 
 
+@router.post("/indexing/pause")
+async def pause_indexing():
+    """Pause the indexing worker to free Ollama for other requests."""
+    from tifaw.main import app
+    queue = app.state.index_queue if hasattr(app.state, "index_queue") else None
+    if queue:
+        queue.pause()
+        return {"status": "paused"}
+    return {"status": "no_queue"}
+
+
+@router.post("/indexing/resume")
+async def resume_indexing():
+    """Resume the indexing worker."""
+    from tifaw.main import app
+    queue = app.state.index_queue if hasattr(app.state, "index_queue") else None
+    if queue:
+        queue.resume()
+        return {"status": "resumed"}
+    return {"status": "no_queue"}
+
+
 @router.post("/import/spotlight")
 async def import_spotlight(folder: str | None = None):
     """Import files from macOS Spotlight index. Bypasses Full Disk Access restrictions."""

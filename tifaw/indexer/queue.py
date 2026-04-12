@@ -25,6 +25,16 @@ class IndexQueue:
     def __init__(self) -> None:
         self._queue: asyncio.PriorityQueue[IndexJob] = asyncio.PriorityQueue()
         self._seen: set[str] = set()
+        self._pause_event = asyncio.Event()
+        self._pause_event.set()  # Not paused initially
+
+    def pause(self) -> None:
+        """Pause the worker (lets current job finish, then waits)."""
+        self._pause_event.clear()
+
+    def resume(self) -> None:
+        """Resume the worker."""
+        self._pause_event.set()
 
     async def enqueue(self, file_path: str, priority: int = 1) -> None:
         if file_path in self._seen:
@@ -81,6 +91,8 @@ class IndexQueue:
         logger.info("Index worker running")
         while True:
             try:
+                # Wait if paused (e.g. during chat)
+                await self._pause_event.wait()
                 job = await self._queue.get()
                 self._seen.discard(job.file_path)
                 logger.info("Processing: %s (priority=%d)", job.file_path, job.priority)
