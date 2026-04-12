@@ -33,6 +33,25 @@ async def get_status():
     }
 
 
+@router.post("/requeue-pending")
+async def requeue_pending():
+    """Re-queue all pending files for analysis."""
+    from tifaw.main import app, db
+
+    queue = app.state.index_queue if hasattr(app.state, "index_queue") else None
+    if not queue:
+        return {"error": "Index queue not available"}
+
+    cursor = await db.db.execute(
+        "SELECT path FROM files WHERE status='pending' LIMIT 5000"
+    )
+    rows = await cursor.fetchall()
+    for row in rows:
+        await queue.enqueue(row["path"], priority=5)
+
+    return {"queued": len(rows)}
+
+
 @router.post("/import/spotlight")
 async def import_spotlight(folder: str | None = None):
     """Import files from macOS Spotlight index. Bypasses Full Disk Access restrictions."""

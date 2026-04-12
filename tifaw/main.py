@@ -50,10 +50,14 @@ async def lifespan(app: FastAPI):
 
         watcher = FileWatcher(settings, db, index_queue)
         watcher.start()
+        app.state.watcher = watcher
         logger.info("File watcher started for: %s", settings.watch_folders)
 
         indexer_task = index_queue.start_worker(db, llm, settings)
         logger.info("Index worker started")
+
+        # Re-queue any files stuck in "pending" from previous runs
+        await index_queue.recover_pending(db)
     except ImportError:
         logger.info("Watcher/indexer not yet implemented, skipping")
 
@@ -95,6 +99,11 @@ from tifaw.api.routes_duplicates import router as duplicates_router
 from tifaw.api.routes_cleanup import router as cleanup_router
 from tifaw.api.routes_projects import router as projects_router
 from tifaw.api.routes_digest import router as digest_router
+from tifaw.api.routes_config import router as config_router
+from tifaw.api.routes_faces import router as faces_router
+from tifaw.api.routes_overview import router as overview_router
+from tifaw.api.routes_photos import router as photos_router
+from tifaw.api.routes_documents import router as documents_router
 
 app.include_router(status_router, prefix="/api")
 app.include_router(files_router, prefix="/api")
@@ -107,12 +116,19 @@ app.include_router(duplicates_router, prefix="/api")
 app.include_router(cleanup_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 app.include_router(digest_router, prefix="/api")
+app.include_router(config_router, prefix="/api")
+app.include_router(faces_router, prefix="/api")
+app.include_router(overview_router, prefix="/api")
+app.include_router(photos_router, prefix="/api")
+app.include_router(documents_router, prefix="/api")
 
 # Serve frontend as static files (must be last)
 import os
-frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
+frontend_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend"))
 if os.path.isdir(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+else:
+    logger.warning("Frontend directory not found at %s", frontend_dir)
 
 
 def run():
