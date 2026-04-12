@@ -1,52 +1,40 @@
-# Tifaw Configuration
-
-# Folders to watch for new/changed files
 watch_folders:
-  - /tmp/tifaw-test
-  - ~/Downloads
-  - ~/Desktop
-  - ~/Documents
-
-# Directories to scan for code projects
+- ~/Downloads
+- ~/Desktop
+- ~/Documents
 project_directories:
-  - ~/Projects
-
-# Smart rename settings
+- ~/Projects
 rename:
   enabled: true
-  auto_approve: false  # Set true to rename without asking
-
-# Stale file cleanup
+  auto_approve: false
 cleanup:
   threshold_days: 90
-
-# Indexing
 indexing:
   max_file_size_mb: 100
   supported_extensions:
-    - .pdf
-    - .png
-    - .jpg
-    - .jpeg
-    - .gif
-    - .webp
-    - .txt
-    - .md
-    - .csv
-    - .json
-    - .py
-    - .js
-    - .ts
-    - .jsx
-    - .tsx
-    - .html
-    - .css
-    - .go
-    - .rs
-    - .java
-    - .cpp
-    - .c
-    - .h
-    - .docx
-    - .xlsx
-    - .svg
+  - .pdf
+  - .png
+  - .jpg
+  - .jpeg
+  - .gif
+  - .webp
+  - .txt
+  - .md
+  - .csv
+  - .json
+  - .py
+  - .js
+  - .ts
+  - .jsx
+  - .tsx
+  - .html
+  - .css
+  - .go
+  - .rs
+  - .java
+  - .cpp
+  - .c
+  - .h
+  - .docx
+  - .xlsx
+  - .svg

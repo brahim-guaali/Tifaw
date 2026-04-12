@@ -1,8 +1,10 @@
+VENV := .venv/bin
+
 .PHONY: setup dev lint test clean
 
 setup:
 	@echo "Installing dependencies..."
-	pip install -e ".[dev]"
+	$(VENV)/pip install -e ".[dev]"
 	@echo "Ensuring Ollama model is available..."
 	ollama pull gemma4:e4b
 	@echo "Creating data directory..."
@@ -10,18 +12,18 @@ setup:
 	@echo "Setup complete! Run 'make dev' to start."
 
 dev:
-	uvicorn tifaw.main:app --host 127.0.0.1 --port 8321 --reload
+	$(VENV)/uvicorn tifaw.main:app --host 127.0.0.1 --port 8321 --reload
 
 lint:
-	ruff check tifaw/ tests/
-	ruff format --check tifaw/ tests/
+	$(VENV)/ruff check tifaw/ tests/
+	$(VENV)/ruff format --check tifaw/ tests/
 
 format:
-	ruff check --fix tifaw/ tests/
-	ruff format tifaw/ tests/
+	$(VENV)/ruff check --fix tifaw/ tests/
+	$(VENV)/ruff format tifaw/ tests/
 
 test:
-	pytest tests/ -v
+	$(VENV)/pytest tests/ -v
 
 clean:
 	rm -rf __pycache__ .pytest_cache .ruff_cache *.egg-info dist build
