@@ -10,8 +10,9 @@ Tifaw (ⵜⵉⴼⴰⵡ) - meaning "clarity" or "radiance" in Tamazight (Amazigh/
 
 Tifaw doesn't just list files -- it tells the story of your digital life. It knows your photos, recognizes faces, groups documents by purpose, tracks your code projects, and lets you ask questions about everything in plain English.
 
----
+![1776006081173](https://github.com/user-attachments/assets/fbc28a38-2e1a-4ffa-866a-9006d7a893a0)
 
+---
 ## Features
 
 ### Your Laptop's Story
