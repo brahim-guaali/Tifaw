@@ -74,6 +74,7 @@ function app() {
 
         // File detail
         selectedFile: null,
+        textPreview: '',
 
         // Folder picker
         folderPicker: { open: false, path: '', dirs: [], parent: null, target: null, index: null },
@@ -710,7 +711,18 @@ function app() {
         // ─── Helpers ──────────────────────────────────────
         isImage(ext) { return ['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp'].includes(ext); },
         isVideo(ext) { return ['.mp4','.mov','.webm','.avi','.mkv'].includes(ext); },
-        isPreviewable(ext) { return this.isImage(ext) || this.isVideo(ext); },
+        isPdf(ext) { return ext === '.pdf'; },
+        isText(ext) { return ['.txt','.md','.csv','.json','.xml','.yaml','.yml','.log','.ini','.cfg','.conf','.sh','.bash','.zsh','.py','.js','.ts','.html','.css','.go','.rs','.java','.c','.cpp','.h','.rb','.php','.swift','.kt','.sql','.r','.lua','.pl','.toml','.env'].includes(ext); },
+        isPreviewable(ext) { return this.isImage(ext) || this.isVideo(ext) || this.isPdf(ext) || this.isText(ext); },
+
+        async loadTextPreview(fileId) {
+            try {
+                const res = await fetch(`/api/files/${fileId}/preview`);
+                if (!res.ok) { this.textPreview = '(Could not load preview)'; return; }
+                const text = await res.text();
+                this.textPreview = text.slice(0, 50000); // cap at 50k chars
+            } catch { this.textPreview = '(Could not load preview)'; }
+        },
 
         getFileIcon(ext) {
             const m = { '.pdf':'\u{1F4C4}','.png':'\u{1F5BC}\uFE0F','.jpg':'\u{1F5BC}\uFE0F','.jpeg':'\u{1F5BC}\uFE0F','.gif':'\u{1F5BC}\uFE0F','.webp':'\u{1F5BC}\uFE0F','.svg':'\u{1F3A8}','.py':'\u{1F40D}','.js':'\u{1F4DC}','.ts':'\u{1F4DC}','.html':'\u{1F310}','.css':'\u{1F3A8}','.json':'\u{1F4CB}','.md':'\u{1F4DD}','.txt':'\u{1F4DD}','.csv':'\u{1F4CA}','.xlsx':'\u{1F4CA}','.docx':'\u{1F4C4}','.zip':'\u{1F4E6}','.go':'\u{1F537}','.rs':'\u{1F980}','.java':'\u2615' };

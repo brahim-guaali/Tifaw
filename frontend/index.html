@@ -592,14 +592,22 @@
 
             <!-- Document group detail -->
             <div x-show="activeDocGroup">
-                <button @click="activeDocGroup=null; activeDocFiles=[]" class="text-sm text-blue-500 hover:text-blue-400 flex items-center gap-1 mb-4">
+                <button @click="activeDocGroup=null; activeDocFiles=[]; selectedFiles=[]; selectionMode=false" class="text-sm text-blue-500 hover:text-blue-400 flex items-center gap-1 mb-4">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
                     All Documents
                 </button>
-                <h2 class="text-lg font-semibold mb-4" x-text="activeDocGroup"></h2>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold" x-text="activeDocGroup"></h2>
+                    <button @click="toggleSelectionMode()" :class="selectionMode ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'" class="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                        <span x-text="selectionMode ? 'Cancel' : 'Select'"></span>
+                    </button>
+                </div>
                 <div class="space-y-1">
                     <template x-for="file in activeDocFiles" :key="file.id">
-                        <div @click="selectedFile=file" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white dark:hover:bg-gray-800/50 cursor-pointer transition-colors">
+                        <div @click="selectionMode ? toggleSelect(file) : (selectedFile=file)" :class="isSelected(file.id) && 'bg-blue-50 dark:bg-blue-500/10'" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white dark:hover:bg-gray-800/50 cursor-pointer transition-colors">
+                            <div x-show="selectionMode" class="w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center" :class="isSelected(file.id) ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300 dark:border-gray-600'">
+                                <svg x-show="isSelected(file.id)" class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>
+                            </div>
                             <span class="text-lg" x-text="getFileIcon(file.extension)"></span>
                             <div class="flex-1 min-w-0">
                                 <div class="text-sm font-medium truncate" x-text="file.filename"></div>
@@ -807,7 +815,7 @@
     <!-- ═══════════════════════ FILE DETAIL MODAL ═══════════════════════ -->
     <div x-show="selectedFile" x-transition class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="selectedFile=null">
         <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto" x-show="selectedFile" x-transition.scale.95
-             x-init="$watch('selectedFile', f => { if (f && isImage(f.extension)) loadFaces(f.id); else fileFaces=[]; })">
+             x-init="$watch('selectedFile', f => { if (f && isImage(f.extension)) loadFaces(f.id); else fileFaces=[]; if (f && isText(f.extension)) loadTextPreview(f.id); else textPreview=''; })">
             <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
                 <h2 class="text-sm font-semibold truncate pr-4 privacy-blur" x-text="selectedFile?.filename"></h2>
                 <button @click="selectedFile=null" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">&times;</button>
@@ -815,6 +823,8 @@
             <div x-show="selectedFile && isPreviewable(selectedFile?.extension)" class="bg-gray-100 dark:bg-gray-900/50">
                 <img x-show="selectedFile && isImage(selectedFile?.extension)" :src="selectedFile ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full max-h-64 object-contain" loading="lazy">
                 <video x-show="selectedFile && isVideo(selectedFile?.extension)" :src="selectedFile ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full max-h-64" controls preload="metadata"></video>
+                <iframe x-show="selectedFile && isPdf(selectedFile?.extension)" :src="selectedFile && isPdf(selectedFile?.extension) ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full h-96 border-0"></iframe>
+                <pre x-show="selectedFile && isText(selectedFile?.extension)" x-text="textPreview" class="w-full max-h-96 overflow-auto p-4 bg-gray-50 dark:bg-gray-950 text-xs font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words"></pre>
             </div>
             <!-- Faces -->
             <div x-show="selectedFile && isImage(selectedFile?.extension)" class="px-5 pt-4">

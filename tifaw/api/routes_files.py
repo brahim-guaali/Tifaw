@@ -105,7 +105,8 @@ async def preview_file(file_id: int):
         raise HTTPException(status_code=404, detail="File no longer exists on disk")
 
     media_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
-    return FileResponse(path, media_type=media_type, filename=path.name)
+    headers = {"Content-Disposition": f"inline; filename=\"{path.name}\""}
+    return FileResponse(path, media_type=media_type, headers=headers)
 
 
 @router.post("/files/{file_id}/reveal")
