@@ -66,6 +66,12 @@ Tifaw doesn't just list files -- it tells the story of your digital life. It kno
 - **Stale file cleanup** -- AI scores old files on how safe they are to delete
 - **GPS to location names** -- resolves coordinates to city/country during indexing
 
+### First-Run Onboarding
+- **Welcome wizard** -- 3-step guided setup on first launch: intro, AI engine check, folder & identity config
+- **Ollama health gate** -- auto-detects Ollama status with retry, shows install instructions if missing
+- **Ollama offline banner** -- persistent warning bar when AI is unavailable, with quick-fix command
+- **Empty states** -- friendly guidance on Overview and Documents when no files are indexed yet
+
 ### Settings
 - **User identity** -- select which person you are so AI addresses you by name
 - **Live configuration** -- change watch folders, project directories from the UI with folder picker
@@ -101,8 +107,7 @@ Tifaw doesn't just list files -- it tells the story of your digital life. It kno
 git clone https://github.com/brahim-guaali/Tifaw.git
 cd Tifaw
 python3 -m venv .venv
-make check    # verify prerequisites (Python 3.11+, Ollama, disk space)
-make setup    # installs deps, pulls gemma4:e4b, creates ~/.tifaw
+make setup    # checks prereqs, installs deps, pulls gemma4:e4b, runs doctor
 ```
 
 ### Run
@@ -149,6 +154,7 @@ Tifaw/
       routes_faces.py    # Face detection & people management
       routes_documents.py# Documents grouped by purpose
       routes_config.py   # Live settings API with folder browser
+      routes_onboarding.py # First-run onboarding wizard API
       routes_files.py    # File CRUD, preview, reveal, delete
       routes_rename.py   # Smart rename proposals
       routes_search.py   # Full-text search
@@ -189,7 +195,8 @@ make clean     # remove caches and build artifacts
 If something isn't working after setup, run the health check:
 
 ```bash
-make doctor    # checks venv, Ollama, model, data dir, config
+make check     # re-run prerequisite checks only
+make doctor    # full health check (venv, Ollama, model, data dir, config)
 ```
 
 Common issues:
