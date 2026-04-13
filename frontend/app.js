@@ -138,8 +138,30 @@ function app() {
         // Status (polled)
         status: { ollama_connected: false, total_files: 0, indexed_files: 0, pending_files: 0, pending_renames: 0, queue_size: 0, watched_folders: [] },
 
+        // Onboarding
+        showOnboarding: false,
+        onboardingStep: 1,
+        onboardingStatus: null,
+        onboardingWatchFolders: [],
+        onboardingUserName: '',
+        onboardingOllamaInterval: null,
+
         async init() {
             this.initTheme();
+
+            // Check onboarding status before loading the app
+            try {
+                const r = await fetch('/api/onboarding/status');
+                this.onboardingStatus = await r.json();
+                if (!this.onboardingStatus.onboarding_complete) {
+                    this.showOnboarding = true;
+                    this.onboardingWatchFolders = this.onboardingStatus.watch_folders || [];
+                    this.refreshStatus();
+                    setInterval(() => this.refreshStatus(), 5000);
+                    return;
+                }
+            } catch (e) { }
+
             this.loadOverview();
             this.refreshStatus();
             setInterval(() => this.refreshStatus(), 5000);
@@ -199,6 +221,61 @@ function app() {
         showToast(message, type = 'success') {
             this.toast = { show: true, message, type };
             setTimeout(() => this.toast.show = false, 3000);
+        },
+
+        // ─── Onboarding ─────────────────────────────────
+        nextOnboardingStep() {
+            this.onboardingStep++;
+            if (this.onboardingStep === 2) {
+                this.checkOnboardingOllama();
+                this.onboardingOllamaInterval = setInterval(() => this.checkOnboardingOllama(), 3000);
+            }
+        },
+        prevOnboardingStep() {
+            if (this.onboardingStep === 2 && this.onboardingOllamaInterval) {
+                clearInterval(this.onboardingOllamaInterval);
+                this.onboardingOllamaInterval = null;
+            }
+            this.onboardingStep--;
+        },
+        async checkOnboardingOllama() {
+            try {
+                const r = await fetch('/api/onboarding/status');
+                const data = await r.json();
+                this.onboardingStatus.ollama_connected = data.ollama_connected;
+                this.onboardingStatus.model_available = data.model_available;
+            } catch (e) { }
+        },
+        async completeOnboarding() {
+            if (this.onboardingOllamaInterval) {
+                clearInterval(this.onboardingOllamaInterval);
+                this.onboardingOllamaInterval = null;
+            }
+            try {
+                await fetch('/api/onboarding/complete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        watch_folders: this.onboardingWatchFolders,
+                        user_name: this.onboardingUserName || null,
+                    }),
+                });
+            } catch (e) { }
+            this.showOnboarding = false;
+            this.loadOverview();
+
+            // Set up chat file card listener now that app is fully loaded
+            window.addEventListener('chat-open-file', async (e) => {
+                const fileId = e.detail;
+                if (!fileId) return;
+                try {
+                    const r = await fetch(`/api/files/${fileId}`);
+                    if (r.ok) this.selectedFile = await r.json();
+                } catch {}
+            });
+        },
+        removeOnboardingFolder(idx) {
+            this.onboardingWatchFolders.splice(idx, 1);
         },
 
         // ─── Status ───────────────────────────────────────
@@ -611,9 +688,14 @@ function app() {
         },
         selectFolder() {
             const { target, index, path } = this.folderPicker;
-            if (!this.configData[target]) this.configData[target] = [];
-            if (index !== null) this.configData[target][index] = path;
-            else this.configData[target].push(path);
+            if (target === 'onboarding') {
+                if (index !== null) this.onboardingWatchFolders[index] = path;
+                else this.onboardingWatchFolders.push(path);
+            } else {
+                if (!this.configData[target]) this.configData[target] = [];
+                if (index !== null) this.configData[target][index] = path;
+                else this.configData[target].push(path);
+            }
             this.folderPicker.open = false;
         },
 
