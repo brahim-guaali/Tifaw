@@ -101,6 +101,7 @@ Tifaw doesn't just list files -- it tells the story of your digital life. It kno
 git clone https://github.com/brahim-guaali/Tifaw.git
 cd Tifaw
 python3 -m venv .venv
+make check    # verify prerequisites (Python 3.11+, Ollama, disk space)
 make setup    # installs deps, pulls gemma4:e4b, creates ~/.tifaw
 ```
 
@@ -182,6 +183,19 @@ make format    # auto-fix formatting
 make test      # run pytest
 make clean     # remove caches and build artifacts
 ```
+
+### Troubleshooting
+
+If something isn't working after setup, run the health check:
+
+```bash
+make doctor    # checks venv, Ollama, model, data dir, config
+```
+
+Common issues:
+- **Ollama not running**: Start with `open -a Ollama` or `ollama serve`
+- **Model not found**: Run `ollama pull gemma4:e4b`
+- **Python version too old**: Tifaw requires Python 3.11+
 
 ## License
 
