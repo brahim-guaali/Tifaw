@@ -694,7 +694,25 @@
                         <div class="bubble-content max-w-[90%] sm:max-w-[80%] px-4 py-3 text-sm leading-relaxed" :class="msg.role==='user' ? 'bg-blue-500 text-white rounded-2xl rounded-br-md' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-md'" x-html="renderChatContent(msg.content)"></div>
                     </div>
                 </template>
-                <div x-show="chatLoading" class="flex justify-start"><div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-md px-4 py-3"><span class="typing-dots"></span></div></div>
+                <div x-show="chatLoading" class="flex justify-start">
+                    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-md px-5 py-4 max-w-[80%]">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center chat-pulse">
+                                <span class="text-white text-xs font-bold">T</span>
+                            </div>
+                            <div>
+                                <div class="text-xs font-semibold text-gray-700 dark:text-gray-200">Tifaw is thinking</div>
+                                <div class="text-[10px] text-gray-400" x-text="chatElapsed + 's'"></div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="chat-progress-bar h-1 rounded-full bg-gray-100 dark:bg-gray-700 flex-1 overflow-hidden">
+                                <div class="h-full rounded-full bg-gradient-to-r from-blue-400 via-blue-500 to-blue-400 chat-shimmer"></div>
+                            </div>
+                        </div>
+                        <div class="mt-2 text-[11px] text-gray-400 dark:text-gray-500 chat-status-rotate" x-text="chatStatusText"></div>
+                    </div>
+                </div>
             </div>
             <div class="flex-shrink-0 flex gap-3 px-6 sm:px-10 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 mx-auto max-w-3xl w-full">
                 <input type="text" class="flex-1 px-4 py-2.5 bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-gray-400" placeholder="Ask about your files..." x-model="chatInput" @keydown.enter="sendChat()">

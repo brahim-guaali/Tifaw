@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from tifaw.llm.client import OllamaClient
@@ -22,11 +23,28 @@ Guidelines:
 - Use the provided database data to answer — do NOT guess or make up files.
 - If no results are found, say so honestly.
 - Be friendly, concise, and helpful.
-- When listing files, include their filename and description.
-- When showing photos, use this HTML: \
-<div class="chat-photo-grid"><div class="chat-photo"><img src="/api/files/ID/preview"></div></div>
+- ALWAYS use the HTML widget formats below when listing files — never use plain text lists.
 - NEVER delete files without explicit user confirmation. List the files first and ask. \
 Only when the user confirms, respond with DELETE_CONFIRMED:[id1,id2,id3].
+
+FILE DISPLAY FORMATS (use these EXACTLY):
+
+For photos/images, use the photo grid:
+<div class="chat-photo-grid"><div class="chat-photo"><img src="/api/files/ID/preview"></div></div>
+
+For documents, PDFs, code, and other non-image files, use file cards:
+<div class="chat-file-list">\
+<div class="chat-file-card" onclick="window.dispatchEvent(new CustomEvent('chat-open-file',{detail:ID}))">\
+<div class="chat-file-icon">EMOJI</div>\
+<div class="chat-file-info"><div class="chat-file-name">FILENAME</div>\
+<div class="chat-file-desc">SHORT_DESCRIPTION</div></div></div></div>
+
+Replace ID with the file's database id, EMOJI with a file type emoji \
+(📄 for PDF, 📝 for text, 🐍 for Python, 📊 for spreadsheet, etc), \
+FILENAME with the actual filename, and SHORT_DESCRIPTION with a brief description.
+
+You can mix photo grids and file cards in the same response. \
+Group photos together in one grid block, and files together in one file list block.
 """
 
 # ---------------------------------------------------------------------------
@@ -610,3 +628,61 @@ async def run_agent(
             logger.error("Delete from chat failed: %s", e)
 
     return response
+
+
+async def run_agent_stream(
+    user_message: str,
+    db: Database,
+    llm: OllamaClient,
+) -> AsyncGenerator[str, None]:
+    """Stream chat agent response token by token, yielding status updates and content chunks."""
+    # Get user identity
+    system = SYSTEM_PROMPT
+    try:
+        cursor = await db.db.execute("SELECT value FROM settings WHERE key='user_identity'")
+        row = await cursor.fetchone()
+        if row and row["value"]:
+            system += f"\n\nThe user's name is {row['value']}. Address them by name when appropriate."
+    except Exception:
+        pass
+
+    yield json.dumps({"type": "status", "text": "Searching your files..."}) + "\n"
+
+    # Pre-fetch relevant context
+    context = await _gather_context(user_message, db)
+
+    prompt = user_message
+    if context:
+        prompt = f"{user_message}\n\n--- DATA FROM YOUR DATABASE ---\n{context}"
+
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": prompt},
+    ]
+
+    logger.info("Chat stream: %s (context: %d chars)", user_message[:100], len(context))
+
+    yield json.dumps({"type": "status", "text": "Generating response..."}) + "\n"
+
+    full_response = ""
+    async for chunk in llm.chat_stream(messages):
+        content = chunk.get("message", {}).get("content", "")
+        if content:
+            full_response += content
+            yield json.dumps({"type": "token", "text": content}) + "\n"
+
+    # Check for delete confirmation pattern
+    if "DELETE_CONFIRMED:" in full_response:
+        try:
+            import re
+            match = re.search(r'DELETE_CONFIRMED:\[([^\]]+)\]', full_response)
+            if match:
+                ids = [int(x.strip()) for x in match.group(1).split(",")]
+                result = await _delete_files({"file_ids": ids}, db)
+                result_data = json.loads(result)
+                deleted = result_data.get("deleted", 0)
+                yield json.dumps({"type": "token", "text": f"\n\nDone! Moved {deleted} file(s) to Trash."}) + "\n"
+        except Exception as e:
+            logger.error("Delete from chat failed: %s", e)
+
+    yield json.dumps({"type": "done"}) + "\n"

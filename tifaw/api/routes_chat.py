@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from tifaw.chat.agent import run_agent
+from tifaw.chat.agent import run_agent, run_agent_stream
 
 router = APIRouter(tags=["chat"])
 
@@ -37,30 +37,26 @@ async def chat(req: ChatRequest):
 
 @router.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
-    """Stream chat with status updates so the user knows what's happening."""
+    """Stream chat response token by token using newline-delimited JSON."""
     from tifaw.main import app, db, llm
 
     queue = getattr(app.state, "index_queue", None)
 
     async def generate():
-        if queue and queue._queue.qsize() > 0:
+        if queue:
             queue.pause()
-            yield _sse("status", "Pausing indexing...")
 
         try:
-            yield _sse("status", "Thinking...")
-            response = await run_agent(req.message, db, llm)
-            yield _sse("done", response)
+            async for chunk in run_agent_stream(req.message, db, llm):
+                yield chunk
         except Exception as e:
-            yield _sse("error", str(e))
+            yield json.dumps({"type": "error", "text": str(e)}) + "\n"
         finally:
             if queue:
                 queue.resume()
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-def _sse(event: str, data: str) -> str:
-    # Escape newlines for SSE format
-    safe = data.replace("\n", "\\n")
-    return f"event: {event}\ndata: {json.dumps(safe)}\n\n"
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

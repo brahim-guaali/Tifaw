@@ -45,6 +45,10 @@ function app() {
         chatMessages: [],
         chatInput: '',
         chatLoading: false,
+        chatElapsed: 0,
+        chatTimer: null,
+        chatStatusText: '',
+        chatStatusIdx: 0,
 
         // Renames
         renameProposals: [],
@@ -139,6 +143,16 @@ function app() {
             this.loadOverview();
             this.refreshStatus();
             setInterval(() => this.refreshStatus(), 5000);
+
+            // Listen for chat file card clicks to open file detail
+            window.addEventListener('chat-open-file', async (e) => {
+                const fileId = e.detail;
+                if (!fileId) return;
+                try {
+                    const r = await fetch(`/api/files/${fileId}`);
+                    if (r.ok) this.selectedFile = await r.json();
+                } catch {}
+            });
         },
 
         // ─── Theme ────────────────────────────────────────
@@ -428,30 +442,82 @@ function app() {
             this.chatLoading = true;
             this.aiBusy = true;
             this.aiBusyLabel = 'Thinking...';
+            this.chatElapsed = 0;
+            this.chatStatusIdx = 0;
+            const statusMsgs = ['Searching your files...', 'Analyzing results...', 'Reading file metadata...', 'Matching patterns...', 'Composing response...', 'Almost there...', 'Still working on it...', 'Crunching numbers...', 'Reviewing matches...'];
+            this.chatStatusText = statusMsgs[0];
+            this.chatTimer = setInterval(() => {
+                this.chatElapsed++;
+                if (this.chatElapsed % 4 === 0) {
+                    this.chatStatusIdx = (this.chatStatusIdx + 1) % statusMsgs.length;
+                    this.chatStatusText = statusMsgs[this.chatStatusIdx];
+                }
+            }, 1000);
             this.$nextTick(() => { const el = document.getElementById('chatMessages'); if (el) el.scrollTop = el.scrollHeight; });
+
+            // Add placeholder assistant message that will be built up via streaming
+            const assistantMsg = { role: 'assistant', content: '', timestamp: new Date().toISOString() };
+            let streamStarted = false;
+
             try {
-                const r = await fetch('/api/chat', {
+                const r = await fetch('/api/chat/stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: msg }),
                 });
-                const data = r.ok ? await r.json() : null;
-                this.chatMessages.push({
-                    role: 'assistant',
-                    content: data?.response || 'Something went wrong.',
-                    timestamp: new Date().toISOString(),
-                });
+                if (!r.ok) throw new Error('Request failed');
+
+                const reader = r.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        let chunk;
+                        try { chunk = JSON.parse(line); } catch { continue; }
+                        if (chunk.type === 'status') {
+                            this.chatStatusText = chunk.text;
+                        } else if (chunk.type === 'token') {
+                            if (!streamStarted) {
+                                this.chatMessages.push(assistantMsg);
+                                streamStarted = true;
+                                this.chatLoading = false; // hide loading bubble
+                            }
+                            assistantMsg.content += chunk.text;
+                            // Force Alpine reactivity
+                            this.chatMessages = [...this.chatMessages];
+                            this.$nextTick(() => { const el = document.getElementById('chatMessages'); if (el) el.scrollTop = el.scrollHeight; });
+                        } else if (chunk.type === 'error') {
+                            throw new Error(chunk.text);
+                        }
+                    }
+                }
+
+                // If no tokens were received, add a fallback message
+                if (!streamStarted) {
+                    this.chatMessages.push({ role: 'assistant', content: 'No response received.', timestamp: new Date().toISOString() });
+                }
             } catch (e) {
-                this.chatMessages.push({
-                    role: 'assistant',
-                    content: 'Request failed. <button onclick="document.querySelector(\'[x-data]\')._x_dataStack[0].retryChat()" class="text-blue-500 underline">Retry</button>',
-                    timestamp: new Date().toISOString(),
-                    failed: true,
-                    retryMsg: msg,
-                });
+                if (!streamStarted) {
+                    this.chatMessages.push({
+                        role: 'assistant',
+                        content: 'Request failed. <button onclick="document.querySelector(\'[x-data]\')._x_dataStack[0].retryChat()" class="text-blue-500 underline">Retry</button>',
+                        timestamp: new Date().toISOString(),
+                        failed: true,
+                        retryMsg: msg,
+                    });
+                }
             }
             this.chatLoading = false;
             this.aiBusy = false;
+            if (this.chatTimer) { clearInterval(this.chatTimer); this.chatTimer = null; }
             this.$nextTick(() => { const el = document.getElementById('chatMessages'); if (el) el.scrollTop = el.scrollHeight; });
         },
         retryChat() {

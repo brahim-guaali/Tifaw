@@ -28,7 +28,7 @@ Tifaw doesn't just list files -- it tells the story of your digital life. It kno
 - **Face recognition** -- 128-dimensional Apple Vision embeddings match the same person across photos
 - **People management** -- auto-assigned placeholder names, rename once to apply everywhere, merge duplicates with visual person picker
 - **Photo gallery** -- masonry grid with people filter bar, category filter, infinite scroll
-- **Image/video previews** -- inline previews in search results and file details
+- **File previews** -- inline previews for images, videos, PDFs (embedded viewer), and text/code files (30+ extensions) in the file detail modal
 
 ### File Metadata Extraction
 - **EXIF from photos** -- date taken, GPS coordinates, camera make/model, ISO, aperture, focal length, exposure time, image dimensions
@@ -41,7 +41,7 @@ Tifaw doesn't just list files -- it tells the story of your digital life. It kno
 - **Smart renaming** -- detects generic filenames (IMG_2847.png, Screenshot 2026-...) and suggests descriptive names with thumbnail previews
 - **Natural language search** -- full-text search powered by SQLite FTS5 with card-based results
 - **Ask Tifaw** -- AI chat with context-aware search, delete via chat with confirmation, retry on failure
-- **Bulk file actions** -- select multiple files in Photos/Search, then bulk delete, rename, or add context tags
+- **Bulk file actions** -- select multiple files in Photos/Documents/Search, then bulk delete, rename, or add context tags
 - **File actions** -- open in Finder, re-index, rename, move to Trash directly from the UI
 
 ### Organization
