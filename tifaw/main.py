@@ -104,6 +104,7 @@ from tifaw.api.routes_faces import router as faces_router
 from tifaw.api.routes_overview import router as overview_router
 from tifaw.api.routes_photos import router as photos_router
 from tifaw.api.routes_documents import router as documents_router
+from tifaw.api.routes_onboarding import router as onboarding_router
 
 app.include_router(status_router, prefix="/api")
 app.include_router(files_router, prefix="/api")
@@ -121,6 +122,7 @@ app.include_router(faces_router, prefix="/api")
 app.include_router(overview_router, prefix="/api")
 app.include_router(photos_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
+app.include_router(onboarding_router, prefix="/api")
 
 # Serve frontend as static files (must be last)
 import os
