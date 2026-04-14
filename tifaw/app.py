@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import socket
-import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -40,6 +41,13 @@ def _wait_for_server(timeout: int = 15):
     return False
 
 
+def _get_resource_dir() -> Path:
+    """Return the resource directory, handling both dev and frozen .app bundle."""
+    if getattr(sys, "frozen", False):
+        return Path(os.path.dirname(sys.executable)).parent / "Resources"
+    return Path(__file__).parent.parent
+
+
 def _set_macos_branding():
     """Set the macOS dock icon, app name, and About panel."""
     try:
@@ -49,7 +57,7 @@ def _set_macos_branding():
         app = NSApplication.sharedApplication()
 
         # Set dock icon and About panel icon
-        icon_path = Path(__file__).parent.parent / "frontend" / "icon.png"
+        icon_path = _get_resource_dir() / "frontend" / "icon.png"
         if icon_path.exists():
             icon = NSImage.alloc().initWithContentsOfFile_(str(icon_path))
             if icon:

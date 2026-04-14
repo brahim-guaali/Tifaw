@@ -7,7 +7,7 @@ PASS := $(GREEN)✓$(RESET)
 FAIL := $(RED)✗$(RESET)
 WARN := $(YELLOW)!$(RESET)
 
-.PHONY: check setup doctor dev app lint format test clean
+.PHONY: check setup doctor dev app lint format test build build-zip clean
 
 check:
 	@echo "Checking prerequisites..."
@@ -109,6 +109,17 @@ format:
 
 test:
 	$(VENV)/pytest tests/ -v
+
+build:
+	@echo "Building Tifaw.app..."
+	$(VENV)/pip install py2app
+	$(VENV)/python setup_app.py py2app
+	@echo ""
+	@echo "$(GREEN)Built: dist/Tifaw.app$(RESET)"
+
+build-zip: build
+	cd dist && zip -r Tifaw-macos.zip Tifaw.app
+	@echo "$(GREEN)Package: dist/Tifaw-macos.zip$(RESET)"
 
 clean:
 	rm -rf __pycache__ .pytest_cache .ruff_cache *.egg-info dist build

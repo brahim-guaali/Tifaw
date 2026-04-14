@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -125,8 +127,13 @@ app.include_router(documents_router, prefix="/api")
 app.include_router(onboarding_router, prefix="/api")
 
 # Serve frontend as static files (must be last)
-import os
-frontend_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend"))
+if getattr(sys, "frozen", False):
+    # Inside .app bundle: frontend is in Resources/frontend
+    frontend_dir = os.path.join(os.path.dirname(sys.executable), "..", "Resources", "frontend")
+else:
+    frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
+frontend_dir = os.path.normpath(frontend_dir)
+
 if os.path.isdir(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 else:

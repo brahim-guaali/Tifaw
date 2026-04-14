@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import yaml
@@ -45,11 +46,26 @@ class Settings(BaseSettings):
         return Path(self.data_dir).expanduser() / "thumbnails"
 
 
+def _find_config() -> Path | None:
+    """Find config.yaml: user home first, then CWD, then app bundle."""
+    user_config = Path.home() / ".tifaw" / "config.yaml"
+    if user_config.exists():
+        return user_config
+    cwd_config = Path("config.yaml")
+    if cwd_config.exists():
+        return cwd_config
+    if getattr(sys, "frozen", False):
+        bundle_config = Path(os.path.dirname(sys.executable)).parent / "Resources" / "config.yaml"
+        if bundle_config.exists():
+            return bundle_config
+    return None
+
+
 def load_settings() -> Settings:
-    config_path = Path("config.yaml")
+    config_path = _find_config()
     yaml_overrides: dict = {}
 
-    if config_path.exists():
+    if config_path is not None:
         with open(config_path) as f:
             raw = yaml.safe_load(f) or {}
 
