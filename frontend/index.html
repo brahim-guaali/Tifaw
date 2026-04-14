@@ -42,7 +42,7 @@
 
             <!-- Step 1: Welcome -->
             <div x-show="onboardingStep === 1" class="p-8 text-center">
-                <img src="/icon.png" class="w-16 h-16 rounded-2xl shadow-lg shadow-blue-500/20 mx-auto mb-6">
+                <img src="/icon.png" class="w-16 h-16 rounded-2xl shadow-lg shadow-blue-500/20 mx-auto mb-6 privacy-exempt">
                 <h2 class="text-2xl font-bold tracking-tight mb-2">Welcome to Tifaw</h2>
                 <p class="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-8 max-w-sm mx-auto">
                     Your local AI file organizer. Tifaw scans, indexes, and understands your files — entirely on your machine. Nothing ever leaves your laptop.
@@ -186,7 +186,7 @@
     <nav :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'" class="fixed inset-y-0 left-0 w-56 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col z-50 transition-transform duration-200 lg:translate-x-0 lg:static lg:z-auto">
         <div class="p-4 pb-2">
             <div class="flex items-center gap-2.5">
-                <img src="/icon.png" class="w-8 h-8 rounded-xl shadow-sm shadow-blue-500/30">
+                <img src="/icon.png" class="w-8 h-8 rounded-xl shadow-sm shadow-blue-500/30 privacy-exempt">
                 <span class="text-[15px] font-bold tracking-tight">Tifaw</span>
             </div>
         </div>
@@ -290,7 +290,7 @@
         <div x-show="view==='overview'" class="min-h-screen">
             <!-- Overview empty state -->
             <div x-show="!overviewLoading && overview && overview.total_files === 0" class="flex flex-col items-center justify-center min-h-[60vh] px-6">
-                <img src="/icon.png" class="w-16 h-16 rounded-2xl shadow-lg shadow-blue-500/20 mb-6 opacity-70">
+                <img src="/icon.png" class="w-16 h-16 rounded-2xl shadow-lg shadow-blue-500/20 mb-6 opacity-70 privacy-exempt">
                 <h2 class="text-xl font-bold mb-2">Welcome to Tifaw</h2>
                 <p class="text-sm text-gray-500 dark:text-gray-400 text-center max-w-sm mb-6">
                     Your folders are being scanned. As files are indexed, your digital story will appear here.
