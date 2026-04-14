@@ -44,7 +44,8 @@ def _wait_for_server(timeout: int = 15):
 def _get_resource_dir() -> Path:
     """Return the resource directory, handling both dev and frozen .app bundle."""
     if getattr(sys, "frozen", False):
-        return Path(os.path.dirname(sys.executable)).parent / "Resources"
+        # PyInstaller extracts data to sys._MEIPASS
+        return Path(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)))
     return Path(__file__).parent.parent
 
 

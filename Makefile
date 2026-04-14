@@ -112,8 +112,8 @@ test:
 
 build:
 	@echo "Building Tifaw.app..."
-	$(VENV)/pip install py2app
-	$(VENV)/python setup_app.py py2app
+	$(VENV)/pip install pyinstaller
+	$(VENV)/pyinstaller Tifaw.spec --noconfirm
 	@echo ""
 	@echo "$(GREEN)Built: dist/Tifaw.app$(RESET)"
 

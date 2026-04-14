@@ -19,12 +19,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install "setuptools>=68.0,<81"
           pip install "."
-          pip install py2app
+          pip install pyinstaller
 
       - name: Build Tifaw.app
-        run: python setup_app.py py2app
+        run: pyinstaller Tifaw.spec --noconfirm
 
       - name: Package as zip
         run: cd dist && zip -r Tifaw-macos.zip Tifaw.app

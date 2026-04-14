@@ -128,8 +128,9 @@ app.include_router(onboarding_router, prefix="/api")
 
 # Serve frontend as static files (must be last)
 if getattr(sys, "frozen", False):
-    # Inside .app bundle: frontend is in Resources/frontend
-    frontend_dir = os.path.join(os.path.dirname(sys.executable), "..", "Resources", "frontend")
+    # Inside .app bundle: PyInstaller extracts data to sys._MEIPASS
+    _base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    frontend_dir = os.path.join(_base, "frontend")
 else:
     frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
 frontend_dir = os.path.normpath(frontend_dir)

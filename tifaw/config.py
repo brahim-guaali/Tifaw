@@ -55,7 +55,8 @@ def _find_config() -> Path | None:
     if cwd_config.exists():
         return cwd_config
     if getattr(sys, "frozen", False):
-        bundle_config = Path(os.path.dirname(sys.executable)).parent / "Resources" / "config.yaml"
+        base = Path(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)))
+        bundle_config = base / "config.yaml"
         if bundle_config.exists():
             return bundle_config
     return None
