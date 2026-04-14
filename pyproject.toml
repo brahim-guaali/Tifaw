@@ -8,10 +8,33 @@ include = ["tifaw*"]
 [project]
 name = "tifaw"
 version = "0.1.0"
-description = "Local AI desktop assistant & smart file organizer powered by Gemma 4"
+description = "Local AI that indexes, understands, and tells the story of everything on your machine. Powered by Gemma 4 via Ollama."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
+authors = [{ name = "Brahim Guaali", email = "guaalibrahim@gmail.com" }]
+keywords = [
+    "local-ai",
+    "file-organizer",
+    "gemma4",
+    "ollama",
+    "macos",
+    "privacy",
+    "face-recognition",
+    "multimodal-ai",
+    "desktop-app",
+    "smart-rename",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Desktop Environment :: File Managers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 dependencies = [
     "fastapi>=0.115",
@@ -34,11 +57,17 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
+    "py2app>=0.28",
 ]
 
 [project.scripts]
 tifaw = "tifaw.main:run"
 tifaw-app = "tifaw.app:main"
+
+[project.urls]
+Homepage = "https://github.com/brahim-guaali/Tifaw"
+Repository = "https://github.com/brahim-guaali/Tifaw"
+"Bug Tracker" = "https://github.com/brahim-guaali/Tifaw/issues"
 
 [tool.ruff]
 target-version = "py311"
