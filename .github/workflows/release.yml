@@ -19,7 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install "setuptools>=68.0"
+          pip install "setuptools>=68.0,<81"
           pip install "."
           pip install py2app
 
