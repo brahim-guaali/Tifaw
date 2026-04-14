@@ -19,7 +19,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -e "."
+          pip install "setuptools>=68.0"
+          pip install "."
           pip install py2app
 
       - name: Build Tifaw.app
