@@ -24,6 +24,33 @@ Tifaw doesn't just list files -- it tells the story of your digital life. It kno
 ![1776006081173](https://github.com/user-attachments/assets/fbc28a38-2e1a-4ffa-866a-9006d7a893a0)
 
 ---
+
+## Table of Contents
+
+- [Features](#features)
+  - [Your Laptop's Story](#your-laptops-story)
+  - [Photos & People](#photos--people)
+  - [File Metadata Extraction](#file-metadata-extraction)
+  - [Smart File Management](#smart-file-management)
+  - [Organization](#organization)
+  - [Native macOS App](#native-macos-app)
+  - [AI-Powered Insights](#ai-powered-insights)
+  - [First-Run Onboarding](#first-run-onboarding)
+  - [Settings](#settings)
+- [Tech Stack](#tech-stack)
+- [Quick Start](#quick-start)
+  - [Prerequisites](#prerequisites)
+  - [Setup](#setup)
+  - [Run](#run)
+  - [Install as macOS App](#install-as-macos-app)
+  - [Configuration](#configuration)
+- [Project Structure](#project-structure)
+- [Development](#development)
+  - [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
+
 ## Features
 
 ### Your Laptop's Story
