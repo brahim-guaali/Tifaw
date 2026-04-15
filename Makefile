@@ -7,7 +7,7 @@ PASS := $(GREEN)✓$(RESET)
 FAIL := $(RED)✗$(RESET)
 WARN := $(YELLOW)!$(RESET)
 
-.PHONY: check setup doctor dev app lint format test build build-zip clean
+.PHONY: check setup doctor dev app lint format test build build-zip build-dmg clean
 
 check:
 	@echo "Checking prerequisites..."
@@ -120,6 +120,11 @@ build:
 build-zip: build
 	cd dist && zip -r Tifaw-macos.zip Tifaw.app
 	@echo "$(GREEN)Package: dist/Tifaw-macos.zip$(RESET)"
+
+build-dmg: build
+	@echo "Creating Tifaw.dmg..."
+	hdiutil create -volname "Tifaw" -srcfolder dist/Tifaw.app -ov -format UDZO dist/Tifaw.dmg
+	@echo "$(GREEN)Package: dist/Tifaw.dmg$(RESET)"
 
 clean:
 	rm -rf __pycache__ .pytest_cache .ruff_cache *.egg-info dist build

@@ -134,6 +134,23 @@ Open [http://127.0.0.1:8321](http://127.0.0.1:8321) in your browser, or run as a
 python -m tifaw.app   # opens a native window via pywebview
 ```
 
+### Install as macOS App
+
+Build the standalone `.app` bundle and DMG:
+
+```bash
+make build        # builds dist/Tifaw.app via PyInstaller
+make build-dmg    # builds dist/Tifaw.dmg
+```
+
+Since Tifaw is not code-signed, macOS will block it on first launch. Remove the quarantine flag to allow it:
+
+```bash
+xattr -cr dist/Tifaw.app      # if running from build output
+# or after dragging from DMG:
+xattr -cr /Applications/Tifaw.app
+```
+
 ### Configuration
 
 Settings can be changed directly from the UI (Settings page), or by editing `config.yaml`:
