@@ -6,6 +6,17 @@
 
 <p align="center"><strong>Your laptop's story, powered by local AI.</strong></p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple" alt="macOS">
+  <img src="https://img.shields.io/badge/AI-Gemma%204-8E75B2?logo=google&logoColor=white" alt="Gemma 4">
+  <img src="https://img.shields.io/badge/runtime-Ollama-black?logo=ollama" alt="Ollama">
+  <img src="https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/database-SQLite-003B57?logo=sqlite&logoColor=white" alt="SQLite">
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
+</p>
+
 Tifaw (ⵜⵉⴼⴰⵡ) - meaning "clarity" or "radiance" in Tamazight (Amazigh/Berber) - is a local AI desktop assistant that helps you understand everything on your machine. It automatically analyzes, categorizes, and organizes your files using Google's Gemma 4 model running entirely on your laptop through Ollama. No cloud, no telemetry, no subscriptions.
 
 Tifaw doesn't just list files -- it tells the story of your digital life. It knows your photos, recognizes faces, groups documents by purpose, tracks your code projects, and lets you ask questions about everything in plain English.
