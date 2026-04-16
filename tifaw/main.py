@@ -226,7 +226,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tifaw",
     description="Local AI desktop assistant & smart file organizer",
-    version="0.2.0",
+    version="0.2.1",
     lifespan=lifespan,
 )
 

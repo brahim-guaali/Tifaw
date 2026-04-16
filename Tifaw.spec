@@ -106,8 +106,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "Tifaw",
         "CFBundleDisplayName": "Tifaw",
-        "CFBundleVersion": "0.2.0",
-        "CFBundleShortVersionString": "0.2.0",
+        "CFBundleVersion": "0.2.1",
+        "CFBundleShortVersionString": "0.2.1",
         "NSHumanReadableCopyright": "Tifaw — Your laptop's story, powered by local AI.",
         "LSMinimumSystemVersion": "13.0",
         "NSHighResolutionCapable": True,

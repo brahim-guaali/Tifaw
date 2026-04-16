@@ -7,7 +7,7 @@ include = ["tifaw*"]
 
 [project]
 name = "tifaw"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local AI that indexes, understands, and tells the story of everything on your machine. Powered by Gemma 4 via Ollama."
 readme = "README.md"
 license = "Apache-2.0"

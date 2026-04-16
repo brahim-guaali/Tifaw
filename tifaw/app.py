@@ -69,8 +69,8 @@ def _set_macos_branding():
         if info:
             info["CFBundleName"] = "Tifaw"
             info["CFBundleDisplayName"] = "Tifaw"
-            info["CFBundleShortVersionString"] = "0.2.0"
-            info["CFBundleVersion"] = "0.2.0"
+            info["CFBundleShortVersionString"] = "0.2.1"
+            info["CFBundleVersion"] = "0.2.1"
             info["NSHumanReadableCopyright"] = (
                 "Tifaw — Your laptop's story, powered by local AI."
             )
