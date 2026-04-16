@@ -41,15 +41,23 @@ CREATE TRIGGER IF NOT EXISTS files_ai AFTER INSERT ON files BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS files_au AFTER UPDATE ON files BEGIN
-    INSERT INTO files_fts(files_fts, rowid, filename, description, tags, category, content_preview)
-    VALUES ('delete', old.id, old.filename, old.description, old.tags, old.category, old.content_preview);
-    INSERT INTO files_fts(rowid, filename, description, tags, category, content_preview)
-    VALUES (new.id, new.filename, new.description, new.tags, new.category, new.content_preview);
+    INSERT INTO files_fts(files_fts, rowid, filename,
+        description, tags, category, content_preview)
+    VALUES ('delete', old.id, old.filename,
+        old.description, old.tags, old.category,
+        old.content_preview);
+    INSERT INTO files_fts(rowid, filename, description,
+        tags, category, content_preview)
+    VALUES (new.id, new.filename, new.description,
+        new.tags, new.category, new.content_preview);
 END;
 
 CREATE TRIGGER IF NOT EXISTS files_ad AFTER DELETE ON files BEGIN
-    INSERT INTO files_fts(files_fts, rowid, filename, description, tags, category, content_preview)
-    VALUES ('delete', old.id, old.filename, old.description, old.tags, old.category, old.content_preview);
+    INSERT INTO files_fts(files_fts, rowid, filename,
+        description, tags, category, content_preview)
+    VALUES ('delete', old.id, old.filename,
+        old.description, old.tags, old.category,
+        old.content_preview);
 END;
 
 CREATE TABLE IF NOT EXISTS chat_history (
@@ -321,24 +329,80 @@ class Database:
 
     # --- Stats ---
 
+    async def get_file_by_hash_missing(
+        self, file_hash: str, exclude_path: str,
+    ) -> dict | None:
+        """Find a file with matching hash whose path no longer exists
+        on disk (candidate for a move detection)."""
+        from pathlib import Path
+
+        cursor = await self.db.execute(
+            "SELECT * FROM files WHERE file_hash=? AND path!=?",
+            (file_hash, exclude_path),
+        )
+        rows = await cursor.fetchall()
+        for row in rows:
+            if not Path(row["path"]).exists():
+                return dict(row)
+        return None
+
+    async def prune_stale_renames(self) -> int:
+        """Clear pending renames for files whose paths no longer exist."""
+        from pathlib import Path
+
+        cursor = await self.db.execute(
+            "SELECT id, path FROM files "
+            "WHERE rename_status='pending'"
+        )
+        rows = await cursor.fetchall()
+        stale_ids = [
+            r["id"] for r in rows if not Path(r["path"]).exists()
+        ]
+        if not stale_ids:
+            return 0
+        placeholders = ",".join("?" for _ in stale_ids)
+        await self.db.execute(
+            f"UPDATE files SET rename_status=NULL "
+            f"WHERE id IN ({placeholders})",
+            stale_ids,
+        )
+        await self.db.commit()
+        return len(stale_ids)
+
     async def get_stats(self) -> dict:
-        total = await self.db.execute("SELECT COUNT(*) as c FROM files")
+        total = await self.db.execute(
+            "SELECT COUNT(*) as c FROM files"
+        )
         total_row = await total.fetchone()
 
-        indexed = await self.db.execute("SELECT COUNT(*) as c FROM files WHERE status='indexed'")
+        indexed = await self.db.execute(
+            "SELECT COUNT(*) as c FROM files "
+            "WHERE status='indexed'"
+        )
         indexed_row = await indexed.fetchone()
 
-        pending = await self.db.execute("SELECT COUNT(*) as c FROM files WHERE status='pending'")
+        tier1 = await self.db.execute(
+            "SELECT COUNT(*) as c FROM files "
+            "WHERE status='tier1'"
+        )
+        tier1_row = await tier1.fetchone()
+
+        pending = await self.db.execute(
+            "SELECT COUNT(*) as c FROM files "
+            "WHERE status='pending'"
+        )
         pending_row = await pending.fetchone()
 
         renames = await self.db.execute(
-            "SELECT COUNT(*) as c FROM files WHERE rename_status='pending'"
+            "SELECT COUNT(*) as c FROM files "
+            "WHERE rename_status='pending'"
         )
         renames_row = await renames.fetchone()
 
         return {
             "total_files": total_row["c"],
             "indexed_files": indexed_row["c"],
+            "tier1_files": tier1_row["c"],
             "pending_files": pending_row["c"],
             "pending_renames": renames_row["c"],
         }

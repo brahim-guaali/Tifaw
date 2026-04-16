@@ -188,8 +188,8 @@ async def rename_person(old_name: str, body: LabelRequest):
 @router.post("/faces/detect-all")
 async def detect_all_faces():
     """Run face detection on all indexed images that haven't been scanned yet."""
-    from tifaw.main import db, settings
     from tifaw.indexer.pipeline import _detect_and_match_faces
+    from tifaw.main import db, settings
 
     image_exts = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
     placeholders = ",".join(f"'{e}'" for e in image_exts)
@@ -230,7 +230,9 @@ async def list_people():
 
     # Clean up known_people with no faces
     await d.execute(
-        "DELETE FROM known_people WHERE name NOT IN (SELECT DISTINCT label FROM faces WHERE label IS NOT NULL)"
+        "DELETE FROM known_people WHERE name NOT IN "
+        "(SELECT DISTINCT label FROM faces "
+        "WHERE label IS NOT NULL)"
     )
     await d.commit()
 
@@ -334,8 +336,15 @@ async def get_person_summary(name: str):
             "often_with": co_names,
         }
         text = await llm.generate(
-            prompt=f"Generate a 2-sentence profile summary for this person based on their photo presence:\n{json.dumps(stats)}",
-            system="You are Tifaw. Write a warm, brief profile. No markdown. Refer to the person by name.",
+            prompt=(
+                "Generate a 2-sentence profile summary for "
+                "this person based on their photo presence:\n"
+                f"{json.dumps(stats)}"
+            ),
+            system=(
+                "You are Tifaw. Write a warm, brief profile."
+                " No markdown. Refer to the person by name."
+            ),
             temperature=0.5,
         )
         result = {"summary": text.strip(), "stats": stats}

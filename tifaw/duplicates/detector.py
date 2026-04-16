@@ -73,7 +73,10 @@ async def detect_duplicates(db: Database) -> dict[str, int]:
         found_name += 1
 
     await db.db.commit()
-    logger.info("Duplicate scan complete: %d hash matches, %d filename matches", found_hash, found_name)
+    logger.info(
+        "Duplicate scan complete: %d hash matches, %d filename matches",
+        found_hash, found_name,
+    )
     return {"hash_duplicates": found_hash, "name_duplicates": found_name}
 
 

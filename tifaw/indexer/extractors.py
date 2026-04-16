@@ -2,9 +2,27 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Extension → category for instant tier-1 classification
+EXTENSION_CATEGORIES: dict[str, str] = {
+    ".pdf": "Documents", ".docx": "Documents", ".doc": "Documents",
+    ".txt": "Documents", ".md": "Documents", ".rtf": "Documents",
+    ".odt": "Documents", ".pages": "Documents",
+    ".xlsx": "Spreadsheets", ".xls": "Spreadsheets",
+    ".csv": "Spreadsheets", ".tsv": "Spreadsheets",
+    ".numbers": "Spreadsheets", ".ods": "Spreadsheets",
+    ".pptx": "Presentations", ".ppt": "Presentations",
+    ".key": "Presentations",
+    ".png": "Images", ".jpg": "Images", ".jpeg": "Images",
+    ".gif": "Images", ".webp": "Images", ".bmp": "Images",
+    ".svg": "Images", ".tiff": "Images",
+    ".mp4": "Media", ".mov": "Media",
+    ".mp3": "Media", ".m4a": "Media",
+}
 
 TEXT_EXTENSIONS = {
     ".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".toml",
@@ -14,6 +32,11 @@ TEXT_EXTENSIONS = {
 }
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+
+VIDEO_EXTENSIONS = {
+    ".mp4", ".mov", ".avi", ".mkv", ".webm",
+    ".wmv", ".flv", ".m4v",
+}
 
 PDF_EXTENSION = ".pdf"
 
@@ -31,6 +54,8 @@ def extract_content(path: Path) -> ExtractionResult:
 
     if ext in IMAGE_EXTENSIONS:
         return _extract_image(path)
+    elif ext in VIDEO_EXTENSIONS:
+        return _extract_video(path)
     elif ext == PDF_EXTENSION:
         return _extract_pdf(path)
     elif ext in TEXT_EXTENSIONS:
@@ -43,6 +68,42 @@ def extract_content(path: Path) -> ExtractionResult:
         return ExtractionResult(file_type="binary")
 
 
+def _safe_timestamp(ts: float) -> str | None:
+    """Convert a timestamp to ISO format, returning None on overflow."""
+    try:
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def extract_metadata(path: Path) -> dict:
+    """Fast metadata extraction for tier-1 indexing.
+
+    Returns file system info + EXIF data without reading
+    full content or preparing images for LLM.
+    """
+    stat = path.stat()
+    created = _safe_timestamp(stat.st_birthtime)
+    modified = _safe_timestamp(stat.st_mtime)
+
+    result: dict = {
+        "size_bytes": stat.st_size,
+        "created_at": created,
+        "modified_at": modified,
+    }
+
+    ext = path.suffix.lower()
+    if ext in IMAGE_EXTENSIONS:
+        exif = _extract_image_metadata(path)
+        if exif:
+            result["metadata"] = exif
+            # Prefer EXIF date over filesystem date
+            if exif.get("date_taken"):
+                result["created_at"] = exif["date_taken"]
+
+    return result
+
+
 def _extract_text(path: Path) -> ExtractionResult:
     try:
         text = path.read_text(errors="replace")[:2000]
@@ -52,11 +113,66 @@ def _extract_text(path: Path) -> ExtractionResult:
         return ExtractionResult(file_type="text")
 
 
+def _extract_video(path: Path) -> ExtractionResult:
+    """Grab a poster frame via macOS Quick Look for LLM analysis."""
+    import subprocess
+    import sys
+    import tempfile
+
+    if sys.platform != "darwin":
+        return ExtractionResult(file_type="video")
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            subprocess.run(
+                [
+                    "qlmanage", "-t", "-s", "1024", "-o",
+                    str(tmp_path), str(path),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            generated = tmp_path / f"{path.name}.png"
+            if generated.exists():
+                image_bytes = generated.read_bytes()
+                try:
+                    from tifaw.llm.client import resize_image_bytes
+
+                    image_bytes = resize_image_bytes(image_bytes)
+                except Exception:
+                    pass
+                return ExtractionResult(
+                    image_bytes=image_bytes, file_type="video",
+                )
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ) as e:
+        logger.warning("Video frame extraction failed for %s: %s", path, e)
+
+    return ExtractionResult(file_type="video")
+
+
 def _extract_image(path: Path) -> ExtractionResult:
     try:
         image_bytes = path.read_bytes()
+        # Downscale before passing to the LLM (saves memory and
+        # transfers a smaller payload over HTTP).
+        try:
+            from tifaw.llm.client import resize_image_bytes
+
+            image_bytes = resize_image_bytes(image_bytes)
+        except Exception:
+            pass
         metadata = _extract_image_metadata(path)
-        return ExtractionResult(image_bytes=image_bytes, file_type="image", metadata=metadata)
+        return ExtractionResult(
+            image_bytes=image_bytes,
+            file_type="image",
+            metadata=metadata,
+        )
     except Exception as e:
         logger.warning("Failed to read image %s: %s", path, e)
         return ExtractionResult(file_type="image")
@@ -156,7 +272,6 @@ def _extract_image_metadata(path: Path) -> dict | None:
     """Extract EXIF metadata from an image using Pillow."""
     try:
         from PIL import Image
-        from PIL.ExifTags import TAGS, GPSTAGS
 
         img = Image.open(path)
         meta: dict = {

@@ -17,46 +17,43 @@ class ChatRequest(BaseModel):
 
 @router.post("/chat")
 async def chat(req: ChatRequest):
-    from tifaw.main import app, db, llm
+    """Run a chat request on the dedicated chat LLM client.
 
-    # Pause indexing so Ollama is free for chat
-    queue = getattr(app.state, "index_queue", None)
-    if queue:
-        queue.pause()
+    Indexing workers use a separate LLM client pool, so chat is
+    never blocked by indexing — both can run concurrently (subject
+    to Ollama's configured parallelism).
+    """
+    from tifaw.main import chat_llm, db
 
     try:
-        response = await run_agent(req.message, db, llm)
+        response = await run_agent(req.message, db, chat_llm)
         return {"response": response}
     except Exception as e:
         return {"response": f"Error: {e}"}
-    finally:
-        # Resume indexing
-        if queue:
-            queue.resume()
 
 
 @router.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
-    """Stream chat response token by token using newline-delimited JSON."""
-    from tifaw.main import app, db, llm
+    """Stream chat response token by token using newline-delimited JSON.
 
-    queue = getattr(app.state, "index_queue", None)
+    Uses a dedicated chat LLM client; indexing is not paused.
+    """
+    from tifaw.main import chat_llm, db
 
     async def generate():
-        if queue:
-            queue.pause()
-
         try:
-            async for chunk in run_agent_stream(req.message, db, llm):
+            async for chunk in run_agent_stream(
+                req.message, db, chat_llm,
+            ):
                 yield chunk
         except Exception as e:
             yield json.dumps({"type": "error", "text": str(e)}) + "\n"
-        finally:
-            if queue:
-                queue.resume()
 
     return StreamingResponse(
         generate(),
         media_type="text/plain",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )

@@ -34,7 +34,22 @@ async def get_pending_renames():
             "tags": tags or [],
             "category": f.get("category"),
             "content_preview": f.get("content_preview"),
-            "is_image": f.get("extension", "") in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"),
+            "is_image": f.get("extension", "") in (
+                ".png", ".jpg", ".jpeg", ".gif",
+                ".webp", ".svg", ".bmp",
+            ),
+            "is_video": f.get("extension", "") in (
+                ".mp4", ".mov", ".avi", ".mkv", ".webm",
+                ".wmv", ".flv", ".m4v",
+            ),
+            "has_preview": f.get("extension", "") in (
+                ".png", ".jpg", ".jpeg", ".gif",
+                ".webp", ".svg", ".bmp",
+                ".mp4", ".mov", ".avi", ".mkv", ".webm",
+                ".wmv", ".flv", ".m4v",
+                ".pdf", ".docx", ".pptx", ".pages",
+                ".key", ".numbers",
+            ),
         })
     return {"proposals": proposals, "count": len(proposals)}
 
@@ -98,7 +113,9 @@ async def undo_rename(file_id: int):
         os.rename(current_path, original_path)
         await db.update_file_path(file_id, str(original_path), file["original_name"])
         await db.db.execute(
-            "UPDATE files SET original_name=NULL, rename_status=NULL, suggested_name=NULL WHERE id=?",
+            "UPDATE files SET original_name=NULL, "
+            "rename_status=NULL, suggested_name=NULL "
+            "WHERE id=?",
             (file_id,),
         )
         await db.db.commit()

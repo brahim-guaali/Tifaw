@@ -65,8 +65,18 @@ async def get_ai_cleanup_suggestions(days: int = Query(default=90, ge=1)):
 
     try:
         result = await llm.generate_json(
-            prompt=f"These files haven't been modified in {days}+ days. Rate each 1-5 on how safe to delete (5=very safe). Consider: screenshots are usually safe, important documents are not.\n\n{json.dumps(file_summaries, indent=2)}",
-            system='Respond with ONLY a JSON array: [{"id": file_id, "safe_score": 1-5, "reason": "brief reason"}]',
+            prompt=(
+                f"These files haven't been modified in {days}+ "
+                "days. Rate each 1-5 on how safe to delete "
+                "(5=very safe). Consider: screenshots are "
+                "usually safe, important documents are not."
+                f"\n\n{json.dumps(file_summaries, indent=2)}"
+            ),
+            system=(
+                'Respond with ONLY a JSON array: '
+                '[{"id": file_id, "safe_score": 1-5, '
+                '"reason": "brief reason"}]'
+            ),
         )
 
         if isinstance(result, dict) and "suggestions" in result:

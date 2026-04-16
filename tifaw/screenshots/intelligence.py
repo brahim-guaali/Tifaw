@@ -7,12 +7,20 @@ from tifaw.llm.client import OllamaClient
 
 logger = logging.getLogger(__name__)
 
-_ANALYSIS_PROMPT = """Analyze this screenshot and provide a JSON response with:
-1. "type": one of "error", "receipt", "booking", "code", "website", "chat", "document", "other"
-2. "summary": a brief one-sentence description of what the screenshot shows
-3. "extracted_data": a dict of structured key-value data you can extract from the image (e.g., error messages, amounts, dates, URLs, code snippets, etc.)
-
-Respond ONLY with valid JSON, no markdown."""
+_ANALYSIS_PROMPT = (
+    "Analyze this screenshot and provide a JSON response"
+    " with:\n"
+    '1. "type": one of "error", "receipt", "booking",'
+    ' "code", "website", "chat", "document", "other"\n'
+    '2. "summary": a brief one-sentence description of'
+    " what the screenshot shows\n"
+    '3. "extracted_data": a dict of structured key-value'
+    " data you can extract from the image (e.g., error"
+    " messages, amounts, dates, URLs, code snippets,"
+    " etc.)\n"
+    "\n"
+    "Respond ONLY with valid JSON, no markdown."
+)
 
 
 async def analyze_screenshot(file_path: str | Path, llm: OllamaClient) -> dict:

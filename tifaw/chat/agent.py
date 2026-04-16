@@ -34,7 +34,9 @@ For photos/images, use the photo grid:
 
 For documents, PDFs, code, and other non-image files, use file cards:
 <div class="chat-file-list">\
-<div class="chat-file-card" onclick="window.dispatchEvent(new CustomEvent('chat-open-file',{detail:ID}))">\
+<div class="chat-file-card" \
+onclick="window.dispatchEvent(new CustomEvent(\
+'chat-open-file',{detail:ID}))">\
 <div class="chat-file-icon">EMOJI</div>\
 <div class="chat-file-info"><div class="chat-file-name">FILENAME</div>\
 <div class="chat-file-desc">SHORT_DESCRIPTION</div></div></div></div>
@@ -86,7 +88,10 @@ TOOLS: list[dict[str, Any]] = [
                 "properties": {
                     "person": {
                         "type": "string",
-                        "description": "Name of a person to find in photos (must match a face label exactly).",
+                        "description": (
+                            "Name of a person to find in photos"
+                            " (must match a face label exactly)."
+                        ),
                     },
                     "year": {
                         "type": "integer",
@@ -102,7 +107,10 @@ TOOLS: list[dict[str, Any]] = [
                     },
                     "location": {
                         "type": "string",
-                        "description": "Place name to search for in descriptions, tags, and filenames.",
+                        "description": (
+                            "Place name to search for in"
+                            " descriptions, tags, and filenames."
+                        ),
                     },
                     "query": {
                         "type": "string",
@@ -192,7 +200,9 @@ TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "query_database",
             "description": (
-                "Run a read-only SELECT query. Tables: files(id,filename,category,description,tags,metadata,created_at), "
+                "Run a read-only SELECT query. Tables: "
+                "files(id,filename,category,description,"
+                "tags,metadata,created_at), "
                 "faces(file_id,label), known_people(name,face_count), projects(name,stack). "
                 "metadata is JSON: use json_extract(metadata,'$.key')."
             ),
@@ -564,7 +574,11 @@ async def _gather_context(user_message: str, db: Database) -> str:
             "ORDER BY created_at DESC LIMIT 20"
         )).fetchall()
         if rows:
-            ss = [f"  - [id={r['id']}] {r['filename']} ({(r['created_at'] or '')[:10]})" for r in rows]
+            ss = [
+                f"  - [id={r['id']}] {r['filename']}"
+                f" ({(r['created_at'] or '')[:10]})"
+                for r in rows
+            ]
             context_parts.append(f"Screenshots ({len(rows)} shown of total):\n" + "\n".join(ss))
 
     # If asking to delete — include a reminder
@@ -590,7 +604,11 @@ async def run_agent(
         cursor = await db.db.execute("SELECT value FROM settings WHERE key='user_identity'")
         row = await cursor.fetchone()
         if row and row["value"]:
-            system += f"\n\nThe user's name is {row['value']}. Address them by name when appropriate."
+            name = row["value"]
+            system += (
+                f"\n\nThe user's name is {name}."
+                " Address them by name when appropriate."
+            )
     except Exception:
         pass
 
@@ -642,7 +660,11 @@ async def run_agent_stream(
         cursor = await db.db.execute("SELECT value FROM settings WHERE key='user_identity'")
         row = await cursor.fetchone()
         if row and row["value"]:
-            system += f"\n\nThe user's name is {row['value']}. Address them by name when appropriate."
+            name = row["value"]
+            system += (
+                f"\n\nThe user's name is {name}."
+                " Address them by name when appropriate."
+            )
     except Exception:
         pass
 
@@ -681,7 +703,8 @@ async def run_agent_stream(
                 result = await _delete_files({"file_ids": ids}, db)
                 result_data = json.loads(result)
                 deleted = result_data.get("deleted", 0)
-                yield json.dumps({"type": "token", "text": f"\n\nDone! Moved {deleted} file(s) to Trash."}) + "\n"
+                msg = f"\n\nDone! Moved {deleted} file(s) to Trash."
+                yield json.dumps({"type": "token", "text": msg}) + "\n"
         except Exception as e:
             logger.error("Delete from chat failed: %s", e)
 

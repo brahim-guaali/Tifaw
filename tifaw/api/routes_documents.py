@@ -12,7 +12,11 @@ router = APIRouter(tags=["documents"])
 
 # Map categories to purpose groups
 _PURPOSE_GROUPS = {
-    "Finance": {"categories": ["Finance", "Invoices", "Receipts"], "icon": "banknotes", "color": "emerald"},
+    "Finance": {
+        "categories": ["Finance", "Invoices", "Receipts"],
+        "icon": "banknotes",
+        "color": "emerald",
+    },
     "Legal": {"categories": ["Legal"], "icon": "scale", "color": "red"},
     "Education": {"categories": ["Education"], "icon": "academic-cap", "color": "amber"},
     "Work": {"categories": ["Work"], "icon": "briefcase", "color": "blue"},
@@ -57,7 +61,9 @@ async def get_document_groups():
     for name, config in _PURPOSE_GROUPS.items():
         placeholders = ",".join("?" for _ in config["categories"])
         row = await (await d.execute(
-            f"SELECT COUNT(*) as count FROM files WHERE category IN ({placeholders}) AND status='indexed'",
+            "SELECT COUNT(*) as count FROM files"
+            f" WHERE category IN ({placeholders})"
+            " AND status='indexed'",
             config["categories"],
         )).fetchone()
 
@@ -131,7 +137,9 @@ async def get_document_group_files(
         placeholders = ",".join("?" for _ in config["categories"])
 
         total_row = await (await d.execute(
-            f"SELECT COUNT(*) as c FROM files WHERE category IN ({placeholders}) AND status='indexed'",
+            "SELECT COUNT(*) as c FROM files"
+            f" WHERE category IN ({placeholders})"
+            " AND status='indexed'",
             config["categories"],
         )).fetchone()
 
@@ -219,7 +227,10 @@ async def discover_document_groups():
 {tag_list}
 
 Group related tags together and give each group a short, clear name (2-3 words max).
-Only create groups for tags that represent a meaningful document category like "Travel Bookings", "Plane Tickets", "Hotel Reservations", "Tax Documents", "ID Documents", "Insurance", "Contracts", "CVs & Resumes", etc.
+Only create groups for tags that represent a meaningful document category \
+like "Travel Bookings", "Plane Tickets", "Hotel Reservations", \
+"Tax Documents", "ID Documents", "Insurance", "Contracts", \
+"CVs & Resumes", etc.
 
 Skip generic tags that don't form a useful group.
 

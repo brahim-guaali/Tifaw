@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from tifaw.indexer.extractors import ExtractionResult
 from tifaw.llm.client import OllamaClient
@@ -9,13 +8,28 @@ from tifaw.models.schemas import AnalysisResult
 
 logger = logging.getLogger(__name__)
 
-ANALYSIS_SYSTEM_PROMPT = """You are a file analysis assistant. Analyze the given file and respond ONLY with a JSON object (no markdown, no explanation).
-
-The JSON must have these fields:
-- "description": A clear 1-2 sentence description of what this file contains
-- "tags": An array of 3-5 relevant tags (lowercase, single words or short phrases)
-- "category": Exactly one of: Documents, Images, Screenshots, Code, Spreadsheets, Presentations, Invoices, Receipts, Legal, Medical, Personal, Work, Education, Media, Archives, Other
-- "suggested_name": If the current filename is generic or auto-generated (like Screenshot, IMG_, image, document, Untitled, download, or a UUID/hash), suggest a better kebab-case filename (max 50 chars, include the original extension). Set to null if the current name is already descriptive."""
+ANALYSIS_SYSTEM_PROMPT = (
+    "You are a file analysis assistant. Analyze the given"
+    " file and respond ONLY with a JSON object"
+    " (no markdown, no explanation).\n"
+    "\n"
+    "The JSON must have these fields:\n"
+    '- "description": A clear 1-2 sentence description'
+    " of what this file contains\n"
+    '- "tags": An array of 3-5 relevant tags'
+    " (lowercase, single words or short phrases)\n"
+    '- "category": Exactly one of: Documents, Images,'
+    " Screenshots, Code, Spreadsheets, Presentations,"
+    " Invoices, Receipts, Legal, Medical, Personal,"
+    " Work, Education, Media, Archives, Other\n"
+    '- "suggested_name": If the current filename is'
+    " generic or auto-generated (like Screenshot, IMG_,"
+    " image, document, Untitled, download, or a"
+    " UUID/hash), suggest a better kebab-case filename"
+    " (max 50 chars, include the original extension)."
+    " Set to null if the current name is already"
+    " descriptive."
+)
 
 ANALYSIS_PROMPT_TEMPLATE = """Analyze this file:
 Filename: {filename}
@@ -56,7 +70,14 @@ async def analyze_file(
 
         images = [base64.b64encode(extraction.image_bytes).decode()]
         if not content_section:
-            content_section = "See the attached image."
+            if file_type == "video":
+                content_section = (
+                    "The attached image is a poster frame from"
+                    " this video. Describe what the video"
+                    " appears to show."
+                )
+            else:
+                content_section = "See the attached image."
 
     prompt = ANALYSIS_PROMPT_TEMPLATE.format(
         filename=filename,

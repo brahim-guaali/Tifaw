@@ -11,30 +11,35 @@ cleanup:
   threshold_days: 90
 indexing:
   max_file_size_mb: 100
+  recursive: true
+  index_workers: 3
   supported_extensions:
+  # Documents
   - .pdf
+  - .docx
+  - .doc
+  - .xlsx
+  - .xls
+  - .pptx
+  - .ppt
+  - .txt
+  - .md
+  - .rtf
+  - .csv
+  - .pages
+  - .numbers
+  - .key
+  # Images
   - .png
   - .jpg
   - .jpeg
   - .gif
   - .webp
-  - .txt
-  - .md
-  - .csv
-  - .json
-  - .py
-  - .js
-  - .ts
-  - .jsx
-  - .tsx
-  - .html
-  - .css
-  - .go
-  - .rs
-  - .java
-  - .cpp
-  - .c
-  - .h
-  - .docx
-  - .xlsx
+  - .bmp
   - .svg
+  - .tiff
+  # Media
+  - .mp4
+  - .mov
+  - .mp3
+  - .m4a

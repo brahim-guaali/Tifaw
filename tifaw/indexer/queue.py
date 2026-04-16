@@ -23,33 +23,36 @@ class IndexJob:
 
 class IndexQueue:
     def __init__(self) -> None:
-        self._queue: asyncio.PriorityQueue[IndexJob] = asyncio.PriorityQueue()
+        self._queue: asyncio.PriorityQueue[IndexJob] = (
+            asyncio.PriorityQueue()
+        )
         self._seen: set[str] = set()
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # Not paused initially
 
     def pause(self) -> None:
-        """Pause the worker (lets current job finish, then waits)."""
+        """Pause workers (lets current jobs finish, then waits)."""
         self._pause_event.clear()
 
     def resume(self) -> None:
-        """Resume the worker."""
+        """Resume workers."""
         self._pause_event.set()
 
-    async def enqueue(self, file_path: str, priority: int = 1) -> None:
+    async def enqueue(
+        self, file_path: str, priority: int = 1,
+    ) -> None:
         if file_path in self._seen:
             return
         self._seen.add(file_path)
-        await self._queue.put(IndexJob(priority=priority, file_path=file_path))
+        await self._queue.put(
+            IndexJob(priority=priority, file_path=file_path),
+        )
 
     async def recover_pending(self, db: Database) -> int:
-        """Re-queue files that are 'pending' in the DB but not in the queue.
-
-        This handles: server restarts, crashed jobs, Spotlight imports
-        that added rows without queueing them, etc.
-        """
+        """Re-queue files stuck in pending/tier1 status."""
         cursor = await db.db.execute(
-            "SELECT path FROM files WHERE status='pending' LIMIT ?",
+            "SELECT path FROM files "
+            "WHERE status IN ('pending', 'tier1') LIMIT ?",
             (_RECOVERY_BATCH,),
         )
         rows = await cursor.fetchall()
@@ -60,47 +63,106 @@ class IndexQueue:
                 await self.enqueue(path, priority=5)
                 count += 1
         if count:
-            logger.info("Recovered %d pending files into queue", count)
+            logger.info(
+                "Recovered %d pending files into queue", count,
+            )
         return count
 
     def size(self) -> int:
         return self._queue.qsize()
 
-    def start_worker(
-        self, db: Database, llm: OllamaClient, settings: Settings
-    ) -> asyncio.Task:
-        task = asyncio.create_task(self._worker(db, llm, settings))
-        asyncio.create_task(self._recovery_loop(db))
-        return task
+    def start_workers(
+        self,
+        db: Database,
+        llm: OllamaClient,
+        settings: Settings,
+    ) -> list[asyncio.Task]:
+        """Spawn N concurrent index workers + a recovery loop."""
+        n = settings.resolved_index_workers()
+        tasks = []
+        for i in range(n):
+            task = asyncio.create_task(
+                self._worker(db, llm, settings, worker_id=i),
+            )
+            tasks.append(task)
+        tasks.append(
+            asyncio.create_task(self._recovery_loop(db, llm)),
+        )
+        logger.info("Started %d index workers", n)
+        return tasks
 
-    async def _recovery_loop(self, db: Database) -> None:
-        """Periodically check for pending files that fell out of the queue."""
+    async def _recovery_loop(
+        self, db: Database, llm: OllamaClient | None = None,
+    ) -> None:
+        """Periodically re-queue stuck files and wake on Ollama recovery."""
+        ollama_was_down = False
         while True:
             try:
                 await asyncio.sleep(_RECOVERY_INTERVAL)
-                if self._queue.qsize() == 0:
+
+                # Refill when queue is getting empty (not just zero),
+                # so workers always have work in flight
+                if self._queue.qsize() < 10:
                     await self.recover_pending(db)
+
+                # If Ollama went down and came back, requeue pendings
+                if llm is not None:
+                    ok = await llm.health_check()
+                    if ok and ollama_was_down:
+                        logger.info(
+                            "Ollama recovered — re-queueing pending files",
+                        )
+                        await self.recover_pending(db)
+                    ollama_was_down = not ok
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.exception("Recovery loop error")
 
-    async def _worker(self, db: Database, llm: OllamaClient, settings: Settings) -> None:
+    async def _worker(
+        self,
+        db: Database,
+        llm: OllamaClient,
+        settings: Settings,
+        worker_id: int = 0,
+    ) -> None:
         from tifaw.indexer.pipeline import process_file
 
-        logger.info("Index worker running")
+        tag = f"worker-{worker_id}"
+        logger.info("[%s] Index worker running", tag)
         while True:
             try:
-                # Wait if paused (e.g. during chat)
                 await self._pause_event.wait()
                 job = await self._queue.get()
                 self._seen.discard(job.file_path)
-                logger.info("Processing: %s (priority=%d)", job.file_path, job.priority)
-                await process_file(job.file_path, db, llm, settings)
+
+                # Worker deduplication: skip if another worker
+                # already indexed this file
+                existing = await db.get_file_by_path(job.file_path)
+                if (
+                    existing
+                    and existing.get("status") == "indexed"
+                ):
+                    self._queue.task_done()
+                    continue
+
+                logger.info(
+                    "[%s] Processing: %s (priority=%d)",
+                    tag, job.file_path, job.priority,
+                )
+                await process_file(
+                    job.file_path, db, llm, settings,
+                )
                 self._queue.task_done()
             except asyncio.CancelledError:
-                logger.info("Index worker cancelled")
+                logger.info("[%s] Index worker cancelled", tag)
                 break
             except Exception:
-                logger.exception("Error processing %s", job.file_path if 'job' in dir() else "unknown")
+                path = (
+                    job.file_path
+                    if "job" in dir() else "unknown"
+                )
+                logger.exception(
+                    "[%s] Error processing %s", tag, path,
+                )
                 await asyncio.sleep(1)

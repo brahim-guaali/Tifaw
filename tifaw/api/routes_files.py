@@ -109,6 +109,79 @@ async def preview_file(file_id: int):
     return FileResponse(path, media_type=media_type, headers=headers)
 
 
+@router.get("/files/{file_id}/thumbnail")
+async def file_thumbnail(file_id: int):
+    """Return a thumbnail image for the file.
+
+    - Images: serves the original.
+    - Videos / documents / etc.: generates via macOS Quick Look
+      (cached on disk).
+    """
+    from tifaw.main import db, settings
+
+    file = await db.get_file(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    path = Path(file["path"])
+    if not path.exists():
+        raise HTTPException(
+            status_code=404, detail="File no longer exists on disk",
+        )
+
+    ext = (file.get("extension") or "").lower()
+    image_exts = {
+        ".png", ".jpg", ".jpeg", ".gif",
+        ".webp", ".svg", ".bmp",
+    }
+    if ext in image_exts:
+        return FileResponse(
+            path,
+            media_type=mimetypes.guess_type(str(path))[0] or "image/jpeg",
+        )
+
+    # Use qlmanage to generate a thumbnail, cache in thumbnails dir
+    thumb_dir = Path(settings.data_dir).expanduser() / "thumbnails"
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    thumb_path = thumb_dir / f"{file_id}.png"
+
+    if not thumb_path.exists():
+        if sys.platform != "darwin":
+            raise HTTPException(
+                status_code=404, detail="Thumbnail not available",
+            )
+        try:
+            # qlmanage writes "<filename>.png" to output dir
+            subprocess.run(
+                [
+                    "qlmanage", "-t", "-s", "512", "-o",
+                    str(thumb_dir), str(path),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+            # qlmanage names it "<original_name>.png" — rename to file_id
+            generated = thumb_dir / f"{path.name}.png"
+            if generated.exists():
+                generated.rename(thumb_path)
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+        ):
+            raise HTTPException(
+                status_code=404, detail="Could not generate thumbnail",
+            ) from None
+
+    if not thumb_path.exists():
+        raise HTTPException(
+            status_code=404, detail="Thumbnail not available",
+        )
+
+    return FileResponse(thumb_path, media_type="image/png")
+
+
 @router.post("/files/{file_id}/reveal")
 async def reveal_file(file_id: int):
     """Open the file's parent folder in Finder and select the file."""
@@ -201,7 +274,12 @@ async def rename_file(file_id: int, body: RenameRequest):
     old_path.rename(new_path)
     await db.update_file_path(file_id, str(new_path), new_name)
 
-    return {"status": "renamed", "file_id": file_id, "old_name": file["filename"], "new_name": new_name}
+    return {
+        "status": "renamed",
+        "file_id": file_id,
+        "old_name": file["filename"],
+        "new_name": new_name,
+    }
 
 
 @router.post("/files/bulk/add-context")

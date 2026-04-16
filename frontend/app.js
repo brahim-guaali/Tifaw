@@ -53,6 +53,15 @@ function app() {
         // Renames
         renameProposals: [],
 
+        // Organize
+        organizeFolder: '',
+        organizeStrategy: 'file_type',
+        organizePlan: null,
+        organizeLoading: false,
+        organizeExecuting: false,
+        organizeResult: null,
+        organizeConfirm: false,
+
         // Projects
         projects: [],
         projectsLoading: false,
@@ -136,7 +145,7 @@ function app() {
         toast: { show: false, message: '', type: 'success' },
 
         // Status (polled)
-        status: { ollama_connected: false, total_files: 0, indexed_files: 0, pending_files: 0, pending_renames: 0, queue_size: 0, watched_folders: [] },
+        status: { ollama_connected: false, total_files: 0, indexed_files: 0, tier1_files: 0, pending_files: 0, pending_renames: 0, queue_size: 0, watched_folders: [] },
 
         // Onboarding
         showOnboarding: false,
@@ -214,6 +223,7 @@ function app() {
             if (v === 'documents') this.loadDocuments();
             if (v === 'projects') this.loadProjects();
             if (v === 'renames') this.loadRenames();
+            if (v === 'organize') this.organizeReset();
             if (v === 'settings') this.loadConfig();
         },
 
@@ -662,7 +672,7 @@ function app() {
         async saveConfig() {
             this.configSaving = true;
             try {
-                const body = { watch_folders: this.configData.watch_folders, project_directories: this.configData.project_directories, rename_enabled: this.configData.rename?.enabled, rename_auto_approve: this.configData.rename?.auto_approve, cleanup_threshold_days: this.configData.cleanup?.threshold_days, max_file_size_mb: this.configData.indexing?.max_file_size_mb, user_identity: this.configData.user_identity || null };
+                const body = { watch_folders: this.configData.watch_folders, project_directories: this.configData.project_directories, rename_enabled: this.configData.rename?.enabled, rename_auto_approve: this.configData.rename?.auto_approve, cleanup_threshold_days: this.configData.cleanup?.threshold_days, max_file_size_mb: this.configData.indexing?.max_file_size_mb, recursive: this.configData.indexing?.recursive, user_identity: this.configData.user_identity || null };
                 const r = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                 if (r.ok) { this.showToast('Settings saved'); this.refreshStatus(); }
                 else this.showToast('Save failed', 'error');
@@ -688,7 +698,9 @@ function app() {
         },
         selectFolder() {
             const { target, index, path } = this.folderPicker;
-            if (target === 'onboarding') {
+            if (target === 'organize') {
+                this.organizeFolder = path;
+            } else if (target === 'onboarding') {
                 if (index !== null) this.onboardingWatchFolders[index] = path;
                 else this.onboardingWatchFolders.push(path);
             } else {
@@ -697,6 +709,79 @@ function app() {
                 else this.configData[target].push(path);
             }
             this.folderPicker.open = false;
+        },
+
+        // ─── Organize ────────────────────────────────────
+        organizeReset() {
+            this.organizeFolder = '';
+            this.organizeStrategy = 'file_type';
+            this.organizePlan = null;
+            this.organizeResult = null;
+            this.organizeConfirm = false;
+            this.organizeLoading = false;
+            this.organizeExecuting = false;
+        },
+
+        async organizePickFolder() {
+            this.folderPicker.target = 'organize';
+            this.folderPicker.index = null;
+            await this.browseTo(this.organizeFolder || '~');
+            this.folderPicker.open = true;
+        },
+
+        async organizePreview() {
+            if (!this.organizeFolder) return;
+            this.organizeLoading = true;
+            this.organizePlan = null;
+            this.organizeResult = null;
+            const action = async () => {
+                try {
+                    const res = await fetch('/api/organize/preview', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            folder: this.organizeFolder,
+                            strategy: this.organizeStrategy,
+                        }),
+                    });
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.detail || 'Preview failed');
+                    }
+                    this.organizePlan = await res.json();
+                } catch (e) {
+                    this.showToast(e.message, 'error');
+                }
+                this.organizeLoading = false;
+                this.aiBusy = false;
+                this.aiBusyLabel = '';
+            };
+            if (this.organizeStrategy === 'ai_content') {
+                this.aiBusy = true;
+                this.aiBusyLabel = 'Analyzing files with AI...';
+                await this.requestAI('Organize files', action);
+            } else {
+                await action();
+            }
+        },
+
+        async organizeExecute() {
+            if (!this.organizePlan) return;
+            this.organizeExecuting = true;
+            this.organizeConfirm = false;
+            try {
+                const res = await fetch('/api/organize/execute', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(this.organizePlan),
+                });
+                this.organizeResult = await res.json();
+                this.organizePlan = null;
+                this.showToast(`Moved ${this.organizeResult.moved} files`);
+            } catch (e) {
+                this.showToast('Organize failed', 'error');
+            }
+            this.organizeExecuting = false;
         },
 
         // ─── Faces ────────────────────────────────────────

@@ -26,7 +26,9 @@ async def get_overview():
 
     # Date span
     span = (await (await d.execute(
-        "SELECT MIN(created_at) as earliest, MAX(created_at) as latest FROM files WHERE created_at IS NOT NULL"
+        "SELECT MIN(created_at) as earliest, "
+        "MAX(created_at) as latest "
+        "FROM files WHERE created_at IS NOT NULL"
     )).fetchone())
     earliest = (span["earliest"] or "")[:4]
     latest = (span["latest"] or "")[:4]
@@ -38,14 +40,15 @@ async def get_overview():
         FROM files WHERE status='indexed' AND category IS NOT NULL
         GROUP BY category ORDER BY count DESC"""
     )).fetchall()
-    categories = [{"name": r["category"], "count": r["count"], "size": r["size"] or 0} for r in cats]
+    categories = [
+        {"name": r["category"], "count": r["count"],
+         "size": r["size"] or 0}
+        for r in cats
+    ]
 
     # Photos with people
     photos_with_faces = (await (await d.execute(
         "SELECT COUNT(DISTINCT file_id) as c FROM faces"
-    )).fetchone())["c"]
-    unique_people = (await (await d.execute(
-        "SELECT COUNT(DISTINCT label) as c FROM faces WHERE label IS NOT NULL AND label NOT LIKE 'Person %'"
     )).fetchone())["c"]
     total_people = (await (await d.execute(
         "SELECT COUNT(DISTINCT label) as c FROM faces WHERE label IS NOT NULL"
@@ -53,12 +56,18 @@ async def get_overview():
 
     # Total images
     total_images = (await (await d.execute(
-        "SELECT COUNT(*) as c FROM files WHERE extension IN ('.png','.jpg','.jpeg','.gif','.webp','.bmp','.svg') AND status='indexed'"
+        "SELECT COUNT(*) as c FROM files "
+        "WHERE extension IN "
+        "('.png','.jpg','.jpeg','.gif','.webp','.bmp','.svg') "
+        "AND status='indexed'"
     )).fetchone())["c"]
 
     # Documents count
     total_docs = (await (await d.execute(
-        "SELECT COUNT(*) as c FROM files WHERE extension IN ('.pdf','.docx','.xlsx','.txt','.md','.csv') AND status='indexed'"
+        "SELECT COUNT(*) as c FROM files "
+        "WHERE extension IN "
+        "('.pdf','.docx','.xlsx','.txt','.md','.csv') "
+        "AND status='indexed'"
     )).fetchone())["c"]
 
     # Projects
@@ -68,7 +77,10 @@ async def get_overview():
 
     # Education/certificates
     edu_count = (await (await d.execute(
-        "SELECT COUNT(*) as c FROM files WHERE status='indexed' AND (category='Education' OR tags LIKE '%certificate%' OR tags LIKE '%diploma%')"
+        "SELECT COUNT(*) as c FROM files "
+        "WHERE status='indexed' AND "
+        "(category='Education' OR tags LIKE '%certificate%' "
+        "OR tags LIKE '%diploma%')"
     )).fetchone())["c"]
 
     # Screenshots
@@ -79,7 +91,7 @@ async def get_overview():
     # Story cards
     story_cards = []
     if total_images > 0:
-        label = f"photos"
+        label = "photos"
         if total_people > 0:
             label += f" with {total_people} people identified"
         story_cards.append({
@@ -141,7 +153,11 @@ async def get_overview():
         FROM files WHERE watch_folder IS NOT NULL
         GROUP BY watch_folder ORDER BY count DESC"""
     )).fetchall()
-    folders = [{"path": r["watch_folder"], "count": r["count"], "size": r["size"] or 0} for r in folder_rows]
+    folders = [
+        {"path": r["watch_folder"], "count": r["count"],
+         "size": r["size"] or 0}
+        for r in folder_rows
+    ]
 
     # Photo locations (GPS from metadata)
     loc_rows = await (await d.execute(
@@ -182,10 +198,15 @@ async def get_overview():
 
     # Largest file
     largest = await (await d.execute(
-        "SELECT filename, size_bytes FROM files WHERE status='indexed' ORDER BY size_bytes DESC LIMIT 1"
+        "SELECT filename, size_bytes FROM files "
+        "WHERE status='indexed' "
+        "ORDER BY size_bytes DESC LIMIT 1"
     )).fetchone()
     if largest:
-        top_stats["largest_file"] = {"name": largest["filename"], "size": largest["size_bytes"] or 0}
+        top_stats["largest_file"] = {
+            "name": largest["filename"],
+            "size": largest["size_bytes"] or 0,
+        }
 
     # Most photographed person
     top_person = await (await d.execute(
@@ -197,10 +218,15 @@ async def get_overview():
 
     # Oldest file
     oldest = await (await d.execute(
-        "SELECT filename, created_at FROM files WHERE created_at IS NOT NULL ORDER BY created_at ASC LIMIT 1"
+        "SELECT filename, created_at FROM files "
+        "WHERE created_at IS NOT NULL "
+        "ORDER BY created_at ASC LIMIT 1"
     )).fetchone()
     if oldest:
-        top_stats["oldest_file"] = {"name": oldest["filename"], "date": (oldest["created_at"] or "")[:10]}
+        top_stats["oldest_file"] = {
+            "name": oldest["filename"],
+            "date": (oldest["created_at"] or "")[:10],
+        }
 
     # Most active month (from timeline)
     if timeline:
@@ -242,38 +268,57 @@ async def get_narrative():
 
     d = db.db
 
-    # Check cache
+    # Fetch current indexed file count
+    row = await (await d.execute(
+        "SELECT COUNT(*) as total, SUM(size_bytes) as size "
+        "FROM files WHERE status='indexed'"
+    )).fetchone()
+    current_total = row["total"]
+
+    # Check cache — invalidate if file count drifted > 10% from cached
     cached = await (await d.execute(
         "SELECT value FROM settings WHERE key='ai_narrative'"
     )).fetchone()
     if cached:
         data = json.loads(cached["value"])
-        return data
+        cached_total = (data.get("stats") or {}).get("total_files", 0)
+        drift = abs(current_total - cached_total)
+        threshold = max(100, cached_total * 0.1)
+        if drift < threshold:
+            return data
+        # otherwise fall through to regenerate
 
     # Get user identity early (needed for filtering)
-    user_row = await (await d.execute("SELECT value FROM settings WHERE key='user_identity'")).fetchone()
+    user_row = await (await d.execute(
+        "SELECT value FROM settings "
+        "WHERE key='user_identity'"
+    )).fetchone()
     user_name = user_row["value"] if user_row else None
 
     # Gather stats for the LLM
     stats = {}
-    row = await (await d.execute(
-        "SELECT COUNT(*) as total, SUM(size_bytes) as size FROM files WHERE status='indexed'"
-    )).fetchone()
-    stats["total_files"] = row["total"]
+    stats["total_files"] = current_total
 
     span = await (await d.execute(
-        "SELECT MIN(created_at) as earliest, MAX(created_at) as latest FROM files WHERE created_at IS NOT NULL"
+        "SELECT MIN(created_at) as earliest, "
+        "MAX(created_at) as latest "
+        "FROM files WHERE created_at IS NOT NULL"
     )).fetchone()
     stats["earliest_year"] = (span["earliest"] or "")[:4]
     stats["latest_year"] = (span["latest"] or "")[:4]
 
     cats = await (await d.execute(
-        "SELECT category, COUNT(*) as count FROM files WHERE status='indexed' AND category IS NOT NULL GROUP BY category ORDER BY count DESC LIMIT 5"
+        "SELECT category, COUNT(*) as count FROM files "
+        "WHERE status='indexed' AND category IS NOT NULL "
+        "GROUP BY category ORDER BY count DESC LIMIT 5"
     )).fetchall()
     stats["top_categories"] = {r["category"]: r["count"] for r in cats}
 
     top_person = await (await d.execute(
-        "SELECT label, COUNT(DISTINCT file_id) as count FROM faces WHERE label IS NOT NULL AND label NOT LIKE 'Person %' GROUP BY label ORDER BY count DESC LIMIT 5"
+        "SELECT label, COUNT(DISTINCT file_id) as count "
+        "FROM faces WHERE label IS NOT NULL "
+        "AND label NOT LIKE 'Person %' "
+        "GROUP BY label ORDER BY count DESC LIMIT 5"
     )).fetchall()
     # Exclude the user themselves from "top people" so the LLM talks about others
     stats["top_people"] = {r["label"]: r["count"] for r in top_person if r["label"] != user_name}
@@ -282,14 +327,21 @@ async def get_narrative():
         stats["top_people"] = dict(list(stats["top_people"].items())[:3])
 
     locations = await (await d.execute(
-        """SELECT json_extract(metadata, '$.location_city') as city, COUNT(*) as count
-        FROM files WHERE metadata IS NOT NULL AND json_extract(metadata, '$.location_city') IS NOT NULL
+        """SELECT json_extract(metadata, '$.location_city')
+           as city, COUNT(*) as count
+        FROM files WHERE metadata IS NOT NULL
+          AND json_extract(metadata, '$.location_city')
+              IS NOT NULL
         GROUP BY city ORDER BY count DESC LIMIT 5"""
     )).fetchall()
     stats["top_locations"] = {r["city"]: r["count"] for r in locations}
 
     camera = await (await d.execute(
-        "SELECT json_extract(metadata, '$.camera_model') as cam, COUNT(*) as count FROM files WHERE json_extract(metadata, '$.camera_model') IS NOT NULL GROUP BY cam ORDER BY count DESC LIMIT 1"
+        "SELECT json_extract(metadata, '$.camera_model') as cam, "
+        "COUNT(*) as count FROM files "
+        "WHERE json_extract(metadata, '$.camera_model') "
+        "IS NOT NULL "
+        "GROUP BY cam ORDER BY count DESC LIMIT 1"
     )).fetchone()
     if camera and camera["cam"]:
         stats["top_camera"] = camera["cam"]
@@ -299,12 +351,33 @@ async def get_narrative():
 
     try:
         if user_name:
-            address = f"The user's name is {user_name}. Address them as 'you'. If {user_name} appears in the top_people list, that IS the user — don't mention them as a third person. Focus on OTHER people they share photos with."
+            address = (
+                f"The user's name is {user_name}. "
+                "Address them as 'you'. "
+                f"If {user_name} appears in the top_people "
+                "list, that IS the user — don't mention them "
+                "as a third person. Focus on OTHER people "
+                "they share photos with."
+            )
         else:
             address = "Address the user in second person ('you')."
         text = await llm.generate(
-            prompt=f"Here are statistics about a user's digital life:\n{json.dumps(stats, indent=2)}\n\nWrite a warm, personalized 2-3 sentence narrative summarizing their digital life. Be specific — mention other people's names, places, and numbers. Don't start with 'Your digital world' — be creative. {address}",
-            system="You are Tifaw, a personal AI assistant. Write a brief, warm narrative. No markdown formatting.",
+            prompt=(
+                "Here are statistics about a user's "
+                "digital life:\n"
+                f"{json.dumps(stats, indent=2)}\n\n"
+                "Write a warm, personalized 2-3 sentence "
+                "narrative summarizing their digital life. "
+                "Be specific — mention other people's names,"
+                " places, and numbers. Don't start with "
+                "'Your digital world' — be creative. "
+                f"{address}"
+            ),
+            system=(
+                "You are Tifaw, a personal AI assistant. "
+                "Write a brief, warm narrative. "
+                "No markdown formatting."
+            ),
             temperature=0.6,
         )
         result = {"narrative": text.strip(), "stats": stats}
@@ -368,7 +441,9 @@ async def get_photo_stories():
         people_rows = await (await d.execute(
             """SELECT DISTINCT fa.label FROM faces fa
             JOIN files f ON f.id = fa.file_id
-            WHERE SUBSTR(f.created_at, 1, 7) = ? AND fa.label IS NOT NULL AND fa.label NOT LIKE 'Person %'""",
+            WHERE SUBSTR(f.created_at, 1, 7) = ?
+            AND fa.label IS NOT NULL
+            AND fa.label NOT LIKE 'Person %'""",
             (c["month"],),
         )).fetchall()
         people = [r["label"] for r in people_rows]
@@ -392,7 +467,11 @@ Respond with ONLY a JSON array of objects: [{{"index": 0, "title": "..."}}]"""
 
         titles = await llm.generate_json(
             prompt=prompt,
-            system="You are a creative photo storyteller. Generate short, warm titles for photo collections. Respond with ONLY valid JSON.",
+            system=(
+                "You are a creative photo storyteller. "
+                "Generate short, warm titles for photo "
+                "collections. Respond with ONLY valid JSON."
+            ),
         )
 
         if isinstance(titles, dict) and "titles" in titles:
@@ -444,7 +523,10 @@ async def get_weekly_digest():
         cached_at = data.get("generated_at", "")
         if cached_at:
             try:
-                age = (datetime.now(tz=timezone.utc) - datetime.fromisoformat(cached_at)).total_seconds()
+                age = (
+                    datetime.now(tz=timezone.utc)
+                    - datetime.fromisoformat(cached_at)
+                ).total_seconds()
                 if age < 86400:  # 24 hours
                     return data
             except Exception:
@@ -476,8 +558,16 @@ async def get_weekly_digest():
 
     try:
         text = await llm.generate(
-            prompt=f"Summarize this week's file activity in 2-3 sentences:\n{json.dumps(stats, indent=2)}",
-            system="You are Tifaw, a friendly AI file assistant. Write a brief, informative weekly summary. No markdown.",
+            prompt=(
+                "Summarize this week's file activity "
+                "in 2-3 sentences:\n"
+                f"{json.dumps(stats, indent=2)}"
+            ),
+            system=(
+                "You are Tifaw, a friendly AI file "
+                "assistant. Write a brief, informative "
+                "weekly summary. No markdown."
+            ),
             temperature=0.5,
         )
 

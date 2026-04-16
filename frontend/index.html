@@ -228,6 +228,10 @@
                 <span>Renames</span>
                 <span x-show="status.pending_renames>0" x-text="status.pending_renames" class="ml-auto bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
             </button>
+            <button @click="navigate('organize')" class="nav-btn" :class="view==='organize' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/></svg>
+                <span>Organize</span>
+            </button>
         </div>
 
         <!-- Sidebar bottom -->
@@ -258,11 +262,11 @@
     <main class="flex-1 overflow-y-auto pt-14 lg:pt-0">
 
         <!-- Global Progress Bar (indexing or AI busy) -->
-        <div x-show="status.queue_size > 0 || status.pending_files > 0 || aiBusy || chatLoading" x-transition class="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-b border-gray-100 dark:border-gray-800 px-5 py-2.5">
+        <div x-show="status.queue_size > 0 || status.pending_files > 0 || status.tier1_files > 0 || aiBusy || chatLoading" x-transition class="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-b border-gray-100 dark:border-gray-800 px-5 py-2.5">
             <div class="flex items-center gap-3">
                 <div class="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400">
                     <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                    <span x-text="aiBusy ? aiBusyLabel : (chatLoading ? 'AI is thinking...' : 'Indexing files...')"></span>
+                    <span x-text="aiBusy ? aiBusyLabel : (chatLoading ? 'AI is thinking...' : 'Analyzing files...')"></span>
                 </div>
                 <div class="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-500 indexing-progress"
@@ -270,9 +274,11 @@
                          :style="(aiBusy || chatLoading) ? 'width:100%' : ('width:' + (status.total_files > 0 ? Math.round((status.indexed_files / status.total_files) * 100) : 0) + '%')"></div>
                 </div>
                 <span x-show="!aiBusy && !chatLoading" class="text-xs text-gray-400 whitespace-nowrap">
-                    <span x-text="status.indexed_files"></span> / <span x-text="status.total_files"></span>
+                    <span x-text="status.total_files.toLocaleString()"></span> discovered
                     <span class="text-gray-300 dark:text-gray-600 mx-1">|</span>
-                    <span x-text="status.queue_size || status.pending_files"></span> remaining
+                    <span x-text="status.indexed_files"></span> analyzed
+                    <span class="text-gray-300 dark:text-gray-600 mx-1">|</span>
+                    <span x-text="status.queue_size + status.tier1_files"></span> remaining
                 </span>
             </div>
         </div>
@@ -894,7 +900,14 @@
             <div class="space-y-3">
                 <template x-for="p in renameProposals" :key="p.file_id">
                     <div class="card-enter bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden flex flex-col sm:flex-row">
-                        <div x-show="p.is_image" class="sm:w-32 h-24 sm:h-auto flex-shrink-0 bg-gray-100 dark:bg-gray-900 overflow-hidden"><img :src="'/api/files/'+p.file_id+'/preview'" class="w-full h-full object-cover" loading="lazy"></div>
+                        <div x-show="p.has_preview" class="relative sm:w-32 h-24 sm:h-auto flex-shrink-0 bg-gray-100 dark:bg-gray-900 overflow-hidden">
+                            <img :src="'/api/files/'+p.file_id+'/thumbnail'" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'">
+                            <div x-show="p.is_video" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div class="bg-black/50 rounded-full p-2">
+                                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
+                                </div>
+                            </div>
+                        </div>
                         <div class="p-4 flex-1 min-w-0">
                             <div class="text-xs text-gray-400 line-through truncate" x-text="p.current_name"></div>
                             <div class="text-sm font-semibold text-emerald-600 dark:text-emerald-400 truncate" x-text="p.suggested_name"></div>
@@ -908,6 +921,114 @@
                 </template>
             </div>
             <div x-show="renameProposals.length===0" class="text-center py-16"><div class="text-4xl opacity-40 mb-3">&#x2728;</div><div class="text-base font-semibold text-gray-400 mb-1">All caught up</div><div class="text-sm text-gray-400 max-w-xs mx-auto">No pending renames. When Tifaw detects generic filenames, suggestions will appear here.</div></div>
+        </div>
+
+        <!-- ▸▸▸ ORGANIZE ▸▸▸ -->
+        <div x-show="view==='organize'" class="p-6 sm:p-10">
+            <h1 class="text-2xl font-bold tracking-tight mb-6">Organize Folder</h1>
+
+            <!-- Step 1: Setup — folder + strategy -->
+            <div x-show="!organizePlan && !organizeResult" class="space-y-4 max-w-2xl">
+                <!-- Folder selector -->
+                <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5">
+                    <h2 class="text-sm font-semibold mb-3">Target Folder</h2>
+                    <div class="flex items-center gap-2">
+                        <div class="flex-1 px-3 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700/50 rounded-lg text-sm truncate" :class="organizeFolder ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400'" x-text="organizeFolder || 'No folder selected'"></div>
+                        <button @click="organizePickFolder()" class="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Browse</button>
+                    </div>
+                </div>
+
+                <!-- Strategy selector -->
+                <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5">
+                    <h2 class="text-sm font-semibold mb-3">Organization Strategy</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <button @click="organizeStrategy='file_type'" class="text-left p-4 rounded-xl border-2 transition-all" :class="organizeStrategy==='file_type' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10' : 'border-gray-100 dark:border-gray-700/50 hover:border-gray-200 dark:hover:border-gray-600'">
+                            <div class="text-xl mb-2">&#x1F4C2;</div>
+                            <div class="font-medium text-sm">By File Type</div>
+                            <div class="text-xs text-gray-400 mt-1">Group by extension: Images, Documents, Code, etc.</div>
+                        </button>
+                        <button @click="organizeStrategy='ai_content'" class="text-left p-4 rounded-xl border-2 transition-all" :class="organizeStrategy==='ai_content' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10' : 'border-gray-100 dark:border-gray-700/50 hover:border-gray-200 dark:hover:border-gray-600'">
+                            <div class="text-xl mb-2">&#x1F9E0;</div>
+                            <div class="font-medium text-sm">By AI Content</div>
+                            <div class="text-xs text-gray-400 mt-1">AI analyzes descriptions and tags to find logical groups.</div>
+                        </button>
+                        <button @click="organizeStrategy='date'" class="text-left p-4 rounded-xl border-2 transition-all" :class="organizeStrategy==='date' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10' : 'border-gray-100 dark:border-gray-700/50 hover:border-gray-200 dark:hover:border-gray-600'">
+                            <div class="text-xl mb-2">&#x1F4C5;</div>
+                            <div class="font-medium text-sm">By Date</div>
+                            <div class="text-xs text-gray-400 mt-1">Group by modification date: 2024/March, 2024/April, etc.</div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Preview button -->
+                <button @click="organizePreview()" :disabled="!organizeFolder || organizeLoading" class="w-full py-3 bg-blue-500 text-white font-medium rounded-xl hover:bg-blue-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <span x-show="!organizeLoading">Preview Organization</span>
+                    <span x-show="organizeLoading" class="flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        Analyzing...
+                    </span>
+                </button>
+            </div>
+
+            <!-- Step 2: Preview plan -->
+            <div x-show="organizePlan" class="space-y-4 max-w-2xl">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold">Proposed Structure</h2>
+                    <button @click="organizePlan=null" class="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Back</button>
+                </div>
+
+                <template x-for="group in (organizePlan?.groups || [])" :key="group.folder_name">
+                    <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-xl p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+                            <span class="font-semibold text-sm" x-text="group.folder_name"></span>
+                            <span class="text-xs text-gray-400 ml-auto" x-text="group.files.length + ' files'"></span>
+                        </div>
+                        <div class="space-y-1 ml-6">
+                            <template x-for="f in group.files" :key="f">
+                                <div class="text-xs text-gray-500 dark:text-gray-400 truncate" x-text="f.split('/').pop()"></div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Move button / confirmation -->
+                <div x-show="!organizeConfirm">
+                    <button @click="organizeConfirm=true" class="w-full py-3 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-400 transition-colors">Move Files</button>
+                </div>
+                <div x-show="organizeConfirm" class="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl p-4">
+                    <p class="text-sm text-amber-700 dark:text-amber-400 mb-3">This will move files on disk into new sub-folders. Continue?</p>
+                    <div class="flex gap-2">
+                        <button @click="organizeExecute()" :disabled="organizeExecuting" class="px-4 py-2 bg-emerald-500 text-white text-sm font-medium rounded-lg hover:bg-emerald-400 disabled:opacity-40 transition-colors">
+                            <span x-show="!organizeExecuting">Confirm</span>
+                            <span x-show="organizeExecuting" class="flex items-center gap-2">
+                                <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                Moving...
+                            </span>
+                        </button>
+                        <button @click="organizeConfirm=false" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Result -->
+            <div x-show="organizeResult" class="space-y-4 max-w-2xl">
+                <div class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl p-6 text-center">
+                    <div class="text-3xl mb-2">&#x2705;</div>
+                    <div class="text-lg font-semibold" x-text="organizeResult?.moved + ' files moved'"></div>
+                    <div x-show="organizeResult?.errors > 0" class="text-sm text-red-500 mt-1" x-text="organizeResult?.errors + ' errors'"></div>
+                </div>
+                <!-- Error details -->
+                <template x-if="organizeResult?.error_details?.length > 0">
+                    <div class="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl p-4">
+                        <h3 class="text-sm font-semibold text-red-600 dark:text-red-400 mb-2">Errors</h3>
+                        <template x-for="err in organizeResult.error_details" :key="err.file">
+                            <div class="text-xs text-red-500 truncate" x-text="err.file.split('/').pop() + ': ' + err.error"></div>
+                        </template>
+                    </div>
+                </template>
+                <button @click="organizeReset()" class="w-full py-3 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Organize Another Folder</button>
+            </div>
         </div>
 
         <!-- ▸▸▸ SETTINGS ▸▸▸ -->
@@ -964,6 +1085,11 @@
                     <div class="flex items-center gap-4"><label class="toggle-switch"><input type="checkbox" :checked="configData.rename?.enabled" @change="configData.rename={...(configData.rename||{}),enabled:$event.target.checked}"><span class="toggle-slider"></span></label><div><div class="text-sm">Enable smart renaming</div><div class="text-xs text-gray-400 mt-0.5">Suggest better names for generic filenames</div></div></div>
                     <div class="flex items-center gap-4"><label class="toggle-switch"><input type="checkbox" :checked="configData.rename?.auto_approve" @change="configData.rename={...(configData.rename||{}),auto_approve:$event.target.checked}"><span class="toggle-slider"></span></label><div><div class="text-sm">Auto-approve renames</div><div class="text-xs text-gray-400 mt-0.5">Rename without asking</div></div></div>
                 </div>
+            </div>
+            <!-- Indexing -->
+            <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5 mb-4">
+                <h2 class="text-sm font-semibold mb-3">Indexing</h2>
+                <div class="flex items-center gap-4"><label class="toggle-switch"><input type="checkbox" :checked="configData.indexing?.recursive !== false" @change="if(!configData.indexing) configData.indexing={}; configData.indexing.recursive=$event.target.checked"><span class="toggle-slider"></span></label><div><div class="text-sm">Recursive scanning</div><div class="text-xs text-gray-400 mt-0.5">Scan sub-folders inside watch folders. Code projects are automatically detected and skipped.</div></div></div>
             </div>
             <!-- Re-index All -->
             <div class="bg-white dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-2xl p-5 mb-4">

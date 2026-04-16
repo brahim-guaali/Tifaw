@@ -27,7 +27,18 @@ class Settings(BaseSettings):
     rename_auto_approve: bool = False
     cleanup_threshold_days: int = 90
     max_file_size_mb: int = 100
+    recursive: bool = True
+    # 0 = auto (min(4, cpu_count // 2))
+    index_workers: int = 0
     supported_extensions: list[str] = Field(default_factory=list)
+
+    def resolved_index_workers(self) -> int:
+        if self.index_workers > 0:
+            return self.index_workers
+        import os as _os
+
+        cores = _os.cpu_count() or 4
+        return max(1, min(4, cores // 2))
 
     model_config = {"env_prefix": "", "env_file": ".env", "extra": "ignore"}
 
@@ -82,6 +93,8 @@ def load_settings() -> Settings:
 
         indexing = raw.get("indexing", {})
         yaml_overrides["max_file_size_mb"] = indexing.get("max_file_size_mb", 100)
+        yaml_overrides["recursive"] = indexing.get("recursive", True)
+        yaml_overrides["index_workers"] = indexing.get("index_workers", 3)
         yaml_overrides["supported_extensions"] = indexing.get("supported_extensions", [])
 
     settings = Settings(**yaml_overrides)

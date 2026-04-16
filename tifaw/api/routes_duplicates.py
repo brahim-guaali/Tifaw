@@ -64,15 +64,34 @@ async def get_duplicate_advice():
             continue
 
         pair_info = {
-            "file_a": {"filename": file_a["filename"], "size": file_a.get("size_bytes"), "created": file_a.get("created_at"), "description": file_a.get("description")},
-            "file_b": {"filename": file_b["filename"], "size": file_b.get("size_bytes"), "created": file_b.get("created_at"), "description": file_b.get("description")},
+            "file_a": {
+                "filename": file_a["filename"],
+                "size": file_a.get("size_bytes"),
+                "created": file_a.get("created_at"),
+                "description": file_a.get("description"),
+            },
+            "file_b": {
+                "filename": file_b["filename"],
+                "size": file_b.get("size_bytes"),
+                "created": file_b.get("created_at"),
+                "description": file_b.get("description"),
+            },
             "similarity_type": dup.get("similarity_type"),
         }
 
         try:
             result = await llm.generate_json(
-                prompt=f"These two files appear to be duplicates:\n{json.dumps(pair_info, indent=2)}\n\nWhich file should the user keep?",
-                system='Respond with ONLY JSON: {"keep": "a" or "b", "reason": "brief reason", "confidence": 1-5}',
+                prompt=(
+                    "These two files appear to be duplicates:"
+                    f"\n{json.dumps(pair_info, indent=2)}"
+                    "\n\nWhich file should the user keep?"
+                ),
+                system=(
+                    'Respond with ONLY JSON: '
+                    '{"keep": "a" or "b", '
+                    '"reason": "brief reason", '
+                    '"confidence": 1-5}'
+                ),
             )
             advice.append({
                 "duplicate_id": dup["id"],

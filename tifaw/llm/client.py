@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import base64
+import io
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -15,9 +17,8 @@ logger = logging.getLogger(__name__)
 MAX_IMAGE_DIMENSION = 1024
 
 
-def _resize_image_bytes(image_bytes: bytes) -> bytes:
-    import io
-
+def resize_image_bytes(image_bytes: bytes) -> bytes:
+    """Downscale image bytes so max side is at most MAX_IMAGE_DIMENSION."""
     img = Image.open(io.BytesIO(image_bytes))
     w, h = img.size
     if max(w, h) <= MAX_IMAGE_DIMENSION:
@@ -31,9 +32,13 @@ def _resize_image_bytes(image_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
+# Keep the old name as an alias for backwards compatibility
+_resize_image_bytes = resize_image_bytes
+
+
 def _encode_image(path: Path) -> str:
     image_bytes = path.read_bytes()
-    image_bytes = _resize_image_bytes(image_bytes)
+    image_bytes = resize_image_bytes(image_bytes)
     return base64.b64encode(image_bytes).decode()
 
 
@@ -69,6 +74,7 @@ class OllamaClient:
         system: str | None = None,
         images: list[str] | None = None,
         temperature: float = 0.3,
+        retries: int = 2,
     ) -> str:
         messages: list[dict[str, Any]] = []
         if system:
@@ -79,17 +85,40 @@ class OllamaClient:
             user_msg["images"] = images
         messages.append(user_msg)
 
-        resp = await self._client.post(
-            f"{self.base_url}/api/chat",
-            json={
-                "model": self.model,
-                "messages": messages,
-                "stream": False,
-                "options": {"temperature": temperature},
-            },
-        )
-        resp.raise_for_status()
-        return resp.json()["message"]["content"]
+        body = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {"temperature": temperature},
+        }
+
+        last_exc: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                resp = await self._client.post(
+                    f"{self.base_url}/api/chat", json=body,
+                )
+                resp.raise_for_status()
+                return resp.json()["message"]["content"]
+            except (
+                httpx.HTTPStatusError,
+                httpx.ConnectError,
+                httpx.ReadTimeout,
+                httpx.RemoteProtocolError,
+            ) as e:
+                last_exc = e
+                if attempt < retries:
+                    backoff = 1.5 * (2 ** attempt)
+                    logger.warning(
+                        "LLM request failed (%s), retrying in %.1fs...",
+                        e.__class__.__name__, backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                raise
+        if last_exc:
+            raise last_exc
+        return ""
 
     async def generate_json(
         self,

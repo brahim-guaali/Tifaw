@@ -43,7 +43,11 @@ async def get_photos(
         params.append(date_to)
 
     if has_location is True:
-        conditions.append("f.metadata IS NOT NULL AND json_extract(f.metadata, '$.gps_latitude') IS NOT NULL")
+        conditions.append(
+            "f.metadata IS NOT NULL AND "
+            "json_extract(f.metadata, '$.gps_latitude') "
+            "IS NOT NULL"
+        )
 
     where = " AND ".join(conditions)
 

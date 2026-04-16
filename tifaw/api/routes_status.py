@@ -26,6 +26,7 @@ async def get_status():
         "model_available": model_ok,
         "total_files": stats["total_files"],
         "indexed_files": stats["indexed_files"],
+        "tier1_files": stats.get("tier1_files", 0),
         "pending_files": stats["pending_files"],
         "pending_renames": stats["pending_renames"],
         "queue_size": queue_size,

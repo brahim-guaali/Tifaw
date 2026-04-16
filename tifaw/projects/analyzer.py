@@ -101,10 +101,20 @@ async def analyze_project(project_path: Path, llm: OllamaClient) -> ProjectInfo:
 
     if analysis_input:
         try:
-            import json as _json
             result = await llm.generate_json(
-                prompt=f"Analyze this software project:\n\n{analysis_input}\n\nProject name: {project_path.name}",
-                system='Respond with ONLY JSON: {"description": "1-sentence description", "frameworks": ["framework1", "framework2"], "type": "web app/CLI/library/API/mobile/etc", "health": "active/maintained/stale/abandoned"}',
+                prompt=(
+                    "Analyze this software project:\n\n"
+                    f"{analysis_input}\n\n"
+                    f"Project name: {project_path.name}"
+                ),
+                system=(
+                    'Respond with ONLY JSON:'
+                    ' {"description": "1-sentence description",'
+                    ' "frameworks": ["framework1", "framework2"],'
+                    ' "type": "web app/CLI/library/API/mobile/etc",'
+                    ' "health":'
+                    ' "active/maintained/stale/abandoned"}'
+                ),
             )
             info["description"] = result.get("description", info.get("description"))
             frameworks = result.get("frameworks", [])
@@ -118,7 +128,9 @@ async def analyze_project(project_path: Path, llm: OllamaClient) -> ProjectInfo:
             if readme_text:
                 try:
                     description = await llm.generate(
-                        f"Based on this README, provide a single-sentence description:\n\n{readme_text}",
+                        "Based on this README, provide a"
+                        " single-sentence description:"
+                        f"\n\n{readme_text}",
                         temperature=0.2,
                     )
                     info["description"] = description.strip()

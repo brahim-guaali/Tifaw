@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 import yaml
@@ -22,6 +21,7 @@ class ConfigUpdate(BaseModel):
     rename_auto_approve: bool | None = None
     cleanup_threshold_days: int | None = None
     max_file_size_mb: int | None = None
+    recursive: bool | None = None
     supported_extensions: list[str] | None = None
     user_identity: str | None = None
 
@@ -68,6 +68,8 @@ async def update_config(update: ConfigUpdate):
         config.setdefault("cleanup", {})["threshold_days"] = update.cleanup_threshold_days
     if update.max_file_size_mb is not None:
         config.setdefault("indexing", {})["max_file_size_mb"] = update.max_file_size_mb
+    if update.recursive is not None:
+        config.setdefault("indexing", {})["recursive"] = update.recursive
     if update.supported_extensions is not None:
         config.setdefault("indexing", {})["supported_extensions"] = update.supported_extensions
 
@@ -88,8 +90,8 @@ async def update_config(update: ConfigUpdate):
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
     # Reload settings and restart watcher with new config
-    from tifaw.config import load_settings
     import tifaw.main as main_module
+    from tifaw.config import load_settings
 
     old_folders = set(main_module.settings.watch_folders)
     main_module.settings = load_settings()
@@ -110,7 +112,10 @@ async def update_config(update: ConfigUpdate):
                 )
                 new_watcher.start()
                 main_module.app.state.watcher = new_watcher
-                logger.info("Watcher restarted with new folders: %s", main_module.settings.watch_folders)
+                logger.info(
+                    "Watcher restarted with new folders: %s",
+                    main_module.settings.watch_folders,
+                )
         except Exception as e:
             logger.warning("Failed to restart watcher: %s", e)
 

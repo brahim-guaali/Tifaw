@@ -7,7 +7,7 @@ include = ["tifaw*"]
 
 [project]
 name = "tifaw"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local AI that indexes, understands, and tells the story of everything on your machine. Powered by Gemma 4 via Ollama."
 readme = "README.md"
 license = "Apache-2.0"
@@ -47,6 +47,7 @@ dependencies = [
     "pillow>=11.0",
     "python-multipart>=0.0.18",
     "aiosqlite>=0.21",
+    "reverse_geocoder>=1.5",
     "pyobjc-framework-Vision>=10.0; sys_platform == 'darwin'",
     "pywebview>=5.0",
 ]

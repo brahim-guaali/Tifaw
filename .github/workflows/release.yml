@@ -28,8 +28,13 @@ jobs:
       - name: Package as zip
         run: cd dist && zip -r Tifaw-macos.zip Tifaw.app
 
+      - name: Package as dmg
+        run: hdiutil create -volname "Tifaw" -srcfolder dist/Tifaw.app -ov -format UDZO dist/Tifaw.dmg
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/Tifaw-macos.zip
+          files: |
+            dist/Tifaw-macos.zip
+            dist/Tifaw.dmg
           generate_release_notes: true

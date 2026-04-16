@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,24 +29,83 @@ Return ONLY valid JSON with no extra text, using this exact schema:
 
 Rules:
 - Group files by their category, purpose, or logical relationship.
-- Use clear, human-readable folder names (e.g. "Invoices", "Photos - Vacation", "Project Documents").
+- Use clear, human-readable folder names (e.g. "Invoices", "Photos - Vacation").
 - Every file in the input must appear in exactly one group.
 - Do NOT rename files, only move them into sub-folders.
 - Keep the number of groups reasonable (2-10).
 """
 
+EXTENSION_GROUPS = {
+    "Images": {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".tiff", ".ico"},
+    "Documents": {".pdf", ".doc", ".docx", ".txt", ".md", ".rtf", ".odt", ".pages"},
+    "Spreadsheets": {".csv", ".xlsx", ".xls", ".tsv", ".ods", ".numbers"},
+    "Code": {
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".go", ".rs",
+        ".java", ".cpp", ".c", ".h", ".rb", ".sh", ".sql", ".swift", ".kt",
+    },
+    "Data": {".json", ".yaml", ".yml", ".toml", ".xml", ".ini", ".cfg", ".env"},
+    "Audio": {".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma"},
+    "Video": {".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv", ".flv"},
+    "Archives": {".zip", ".tar", ".gz", ".rar", ".7z", ".bz2", ".dmg", ".iso"},
+    "Presentations": {".pptx", ".ppt", ".key", ".odp"},
+}
 
-async def generate_organize_plan(
+# Build a reverse lookup: extension -> group name
+_EXT_TO_GROUP: dict[str, str] = {}
+for _group_name, _exts in EXTENSION_GROUPS.items():
+    for _ext in _exts:
+        _EXT_TO_GROUP[_ext] = _group_name
+
+
+def _plan_by_file_type(folder_path: str, files: list[dict]) -> dict[str, Any]:
+    """Group files by their extension into predefined categories."""
+    groups: dict[str, list[str]] = defaultdict(list)
+
+    for f in files:
+        ext = (f.get("extension") or "").lower()
+        group_name = _EXT_TO_GROUP.get(ext, "Other")
+        groups[group_name].append(f["path"])
+
+    return {
+        "folder": folder_path,
+        "groups": [
+            {"folder_name": name, "files": paths}
+            for name, paths in sorted(groups.items())
+        ],
+    }
+
+
+def _plan_by_date(folder_path: str, files: list[dict]) -> dict[str, Any]:
+    """Group files by their modification date (YYYY/Month)."""
+    groups: dict[str, list[str]] = defaultdict(list)
+
+    for f in files:
+        date_str = f.get("modified_at") or f.get("created_at")
+        if date_str:
+            try:
+                dt = datetime.fromisoformat(date_str)
+                group_name = f"{dt.year}/{dt.strftime('%B')}"
+            except (ValueError, TypeError):
+                group_name = "Unknown Date"
+        else:
+            group_name = "Unknown Date"
+        groups[group_name].append(f["path"])
+
+    return {
+        "folder": folder_path,
+        "groups": [
+            {"folder_name": name, "files": paths}
+            for name, paths in sorted(groups.items())
+        ],
+    }
+
+
+async def _plan_by_ai_content(
     folder_path: str,
-    db: Database,
+    files: list[dict],
     llm: OllamaClient,
 ) -> dict[str, Any]:
-    """Fetch indexed files in *folder_path* and ask the LLM to propose a folder structure."""
-
-    files = await db.get_files(watch_folder=folder_path, limit=1000)
-    if not files:
-        return {"folder": folder_path, "groups": []}
-
+    """Use the LLM to propose a folder structure based on file content/metadata."""
     file_summaries: list[str] = []
     for f in files:
         tags = f.get("tags") or "[]"
@@ -67,13 +128,39 @@ async def generate_organize_plan(
 
     result = await llm.generate_json(prompt, system=ORGANIZE_SYSTEM_PROMPT)
 
-    # Normalise: ensure top-level 'folder' key is present
     result["folder"] = folder_path
     for group in result.get("groups", []):
         group.setdefault("folder_name", "Misc")
         group.setdefault("files", [])
 
     return result
+
+
+async def generate_organize_plan(
+    folder_path: str,
+    db: Database,
+    llm: OllamaClient | None = None,
+    strategy: str = "file_type",
+) -> dict[str, Any]:
+    """Fetch indexed files in *folder_path* and build an organization plan.
+
+    Strategies:
+      - ``file_type``: deterministic grouping by file extension.
+      - ``ai_content``: LLM-based grouping using descriptions/tags/categories.
+      - ``date``: grouping by modification date (YYYY/Month).
+    """
+    files = await db.get_files(watch_folder=folder_path, limit=1000)
+    if not files:
+        return {"folder": folder_path, "groups": []}
+
+    if strategy == "ai_content":
+        if llm is None:
+            raise ValueError("LLM client required for ai_content strategy")
+        return await _plan_by_ai_content(folder_path, files, llm)
+    elif strategy == "date":
+        return _plan_by_date(folder_path, files)
+    else:
+        return _plan_by_file_type(folder_path, files)
 
 
 async def execute_organize_plan(plan: dict[str, Any], db: Database) -> dict[str, Any]:
