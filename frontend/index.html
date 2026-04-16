@@ -493,10 +493,18 @@
                     </div>
 
                     <!-- Calendar Heatmap -->
-                    <div class="px-6 sm:px-10 mt-8" x-show="overview.calendar_heatmap && Object.keys(overview.calendar_heatmap).length > 0">
-                        <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Daily activity (past year)</h2>
-                        <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5 overflow-x-auto">
-                            <div class="heatmap-grid" x-init="$watch('overview.calendar_heatmap', val => { if (val) renderHeatmap(val) })" x-ref="heatmap"></div>
+                    <div class="px-6 sm:px-10 mt-8" x-show="heatmapYears.length > 0">
+                        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                            <h2 class="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Daily activity</h2>
+                            <div class="flex items-center gap-1 flex-wrap">
+                                <template x-for="y in heatmapYears" :key="y">
+                                    <button @click="loadHeatmap(y)" class="px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors" :class="heatmapYear === y ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'" x-text="y"></button>
+                                </template>
+                            </div>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5 overflow-x-auto min-h-[120px]">
+                            <div x-show="heatmapLoading" class="flex items-center justify-center h-20 text-xs text-gray-400">Loading…</div>
+                            <div x-show="!heatmapLoading" class="heatmap-grid" x-ref="heatmap"></div>
                             <div class="flex items-center justify-end gap-1.5 mt-3 text-[10px] text-gray-400">
                                 <span>Less</span>
                                 <div class="w-2.5 h-2.5 rounded-sm bg-gray-100 dark:bg-gray-800"></div>
@@ -1137,13 +1145,33 @@
             </div>
             <!-- Faces -->
             <div x-show="selectedFile && isImage(selectedFile?.extension)" class="px-5 pt-4">
-                <div class="flex items-center justify-between mb-2"><span class="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">People</span><button x-show="fileFaces.length===0" @click="detectFaces(selectedFile?.id)" :disabled="facesLoading" class="text-[11px] text-blue-500 font-medium disabled:opacity-40"><span x-show="!facesLoading">Detect</span><span x-show="facesLoading">...</span></button></div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">People</span>
+                    <div class="flex items-center gap-3">
+                        <button x-show="fileFaces.length>0" @click="redetectFaces(selectedFile?.id)" :disabled="facesLoading" class="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium disabled:opacity-40">Re-detect</button>
+                        <button x-show="fileFaces.length===0" @click="detectFaces(selectedFile?.id)" :disabled="facesLoading" class="text-[11px] text-blue-500 font-medium disabled:opacity-40"><span x-show="!facesLoading">Detect</span><span x-show="facesLoading">...</span></button>
+                    </div>
+                </div>
                 <div x-show="fileFaces.length>0" class="flex flex-wrap gap-3 mb-2">
                     <template x-for="face in fileFaces" :key="face.id">
-                        <div class="flex flex-col items-center gap-1 w-16">
+                        <div class="flex flex-col items-center gap-1 w-16 group relative">
                             <div class="w-12 h-12 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 ring-2" :class="isPlaceholderLabel(face.label)?'ring-amber-300 dark:ring-amber-500/50':'ring-blue-300 dark:ring-blue-500/50'"><img x-show="face.has_thumbnail" :src="'/api/faces/'+face.id+'/thumbnail'" class="w-full h-full object-cover" loading="lazy"></div>
-                            <template x-if="face.label && !isPlaceholderLabel(face.label)"><span class="text-[10px] font-medium text-blue-600 dark:text-blue-400 truncate w-full text-center" x-text="face.label"></span></template>
-                            <template x-if="!face.label || isPlaceholderLabel(face.label)"><input type="text" :placeholder="face.label||'Name'" x-model="labelInput[face.id]" @keydown.enter="labelFace(face.id)" @blur="if(labelInput[face.id]?.trim()) labelFace(face.id)" class="w-full text-[10px] px-1 py-0.5 bg-gray-50 dark:bg-gray-800 border border-amber-300 dark:border-amber-500/40 rounded text-center outline-none focus:border-blue-500 placeholder:text-amber-400"></template>
+                            <!-- Delete X (only on hover) -->
+                            <button @click="deleteFace(face.id)" class="absolute top-0 right-0 -mt-1 -mr-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow" title="Remove this face">
+                                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                            <!-- Named label: click to edit -->
+                            <template x-if="face.label && !isPlaceholderLabel(face.label) && editingFaceId !== face.id">
+                                <button @click="startEditFace(face)" class="text-[10px] font-medium text-blue-600 dark:text-blue-400 truncate w-full text-center hover:underline" :title="'Click to rename ' + face.label" x-text="face.label"></button>
+                            </template>
+                            <!-- Editing existing label -->
+                            <template x-if="editingFaceId === face.id">
+                                <input type="text" x-model="editLabel" x-init="$nextTick(() => $el.focus())" @keydown.enter="saveEditFace(face.id)" @keydown.escape="cancelEditFace()" @blur="saveEditFace(face.id)" class="w-full text-[10px] px-1 py-0.5 bg-gray-50 dark:bg-gray-800 border border-blue-400 rounded text-center outline-none focus:border-blue-500">
+                            </template>
+                            <!-- Placeholder: name input -->
+                            <template x-if="(!face.label || isPlaceholderLabel(face.label)) && editingFaceId !== face.id">
+                                <input type="text" :placeholder="face.label||'Name'" x-model="labelInput[face.id]" @keydown.enter="labelFace(face.id)" @blur="if(labelInput[face.id]?.trim()) labelFace(face.id)" class="w-full text-[10px] px-1 py-0.5 bg-gray-50 dark:bg-gray-800 border border-amber-300 dark:border-amber-500/40 rounded text-center outline-none focus:border-blue-500 placeholder:text-amber-400">
+                            </template>
                         </div>
                     </template>
                 </div>

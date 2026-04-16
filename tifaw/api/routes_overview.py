@@ -172,14 +172,16 @@ async def get_overview():
     photo_locations = [{"id": r["id"], "filename": r["filename"],
                         "lat": r["lat"], "lng": r["lng"]} for r in loc_rows]
 
-    # Calendar heatmap (daily counts, past year)
-    heatmap_rows = await (await d.execute(
-        """SELECT DATE(created_at) as day, COUNT(*) as count
-        FROM files WHERE status='indexed' AND created_at IS NOT NULL
-          AND created_at >= date('now', '-1 year')
-        GROUP BY day ORDER BY day"""
+    # Years that have indexed activity — let the frontend
+    # decide which year to load lazily via /overview/heatmap.
+    year_rows = await (await d.execute(
+        """SELECT DISTINCT CAST(SUBSTR(created_at, 1, 4) AS INT) as y
+        FROM files
+        WHERE status='indexed' AND created_at IS NOT NULL
+        ORDER BY y DESC"""
     )).fetchall()
-    calendar_heatmap = {r["day"]: r["count"] for r in heatmap_rows if r["day"]}
+    available_years = [r["y"] for r in year_rows if r["y"]]
+    calendar_heatmap = {}  # populated lazily by the client
 
     # People co-occurrence
     cooc_rows = await (await d.execute(
@@ -256,8 +258,46 @@ async def get_overview():
         "photos_with_faces": photos_with_faces,
         "photo_locations": photo_locations,
         "calendar_heatmap": calendar_heatmap,
+        "heatmap_years": available_years,
         "people_cooccurrence": people_cooccurrence,
         "top_stats": top_stats,
+    }
+
+
+@router.get("/overview/heatmap")
+async def get_heatmap(year: int | None = None):
+    """Return per-day file counts for *year* (default: current year)."""
+    from tifaw.main import db
+
+    d = db.db
+    from datetime import datetime
+
+    if not year:
+        year = datetime.now().year
+
+    rows = await (await d.execute(
+        """SELECT DATE(created_at) as day, COUNT(*) as count
+        FROM files
+        WHERE status='indexed' AND created_at IS NOT NULL
+          AND CAST(SUBSTR(created_at, 1, 4) AS INT) = ?
+        GROUP BY day ORDER BY day""",
+        (year,),
+    )).fetchall()
+    days = {r["day"]: r["count"] for r in rows if r["day"]}
+
+    year_rows = await (await d.execute(
+        """SELECT DISTINCT CAST(SUBSTR(created_at, 1, 4) AS INT) as y
+        FROM files
+        WHERE status='indexed' AND created_at IS NOT NULL
+        ORDER BY y DESC"""
+    )).fetchall()
+    available = [r["y"] for r in year_rows if r["y"]]
+
+    return {
+        "year": year,
+        "days": days,
+        "total": sum(days.values()),
+        "available_years": available,
     }
 
 

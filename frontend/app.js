@@ -11,6 +11,11 @@ function app() {
         aiNarrative: null,
         aiDigest: null,
         photoStories: [],
+        heatmapYears: [],
+        heatmapYear: null,
+        heatmapData: {},
+        heatmapLoading: false,
+        heatmapVisible: false,
 
         // Photos
         photos: [],
@@ -76,6 +81,8 @@ function app() {
         fileFaces: [],
         facesLoading: false,
         labelInput: {},
+        editingFaceId: null,
+        editLabel: '',
 
         // Merge picker
         mergePickerOpen: false,
@@ -304,8 +311,12 @@ function app() {
                 this.overview = await r.json();
                 this.$nextTick(() => {
                     if (this.overview.photo_locations?.length) this.initMap(this.overview.photo_locations);
-                    if (this.overview.calendar_heatmap) this.renderHeatmap(this.overview.calendar_heatmap);
                 });
+                this.heatmapYears = this.overview.heatmap_years || [];
+                if (this.heatmapYears.length && !this.heatmapYear) {
+                    this.heatmapYear = this.heatmapYears[0];
+                }
+                this.$nextTick(() => this.observeHeatmap());
                 // Fetch AI-powered content lazily after main render (non-blocking)
                 setTimeout(() => {
                     fetch('/api/overview/narrative').then(r => r.json()).then(d => { this.aiNarrative = d.narrative; }).catch(() => {});
@@ -816,6 +827,46 @@ function app() {
         },
         isPlaceholderLabel(l) { return l && l.startsWith('Person '); },
 
+        startEditFace(face) {
+            this.editingFaceId = face.id;
+            this.editLabel = face.label || '';
+        },
+        cancelEditFace() {
+            this.editingFaceId = null;
+            this.editLabel = '';
+        },
+        async saveEditFace(faceId) {
+            const label = (this.editLabel || '').trim();
+            if (!label) { this.cancelEditFace(); return; }
+            try {
+                const data = await (await fetch(`/api/faces/${faceId}/label`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) })).json();
+                const face = this.fileFaces.find(f => f.id === faceId);
+                const old = face?.label;
+                this.fileFaces.forEach(f => { if (f.label === old) f.label = label; });
+                this.showToast(data.faces_updated > 1 ? `Renamed ${data.faces_updated} faces to ${label}` : `Renamed to ${label}`);
+            } catch (e) { this.showToast('Rename failed', 'error'); }
+            this.cancelEditFace();
+        },
+        async deleteFace(faceId) {
+            if (!confirm('Remove this face detection?')) return;
+            try {
+                await fetch(`/api/faces/${faceId}`, { method: 'DELETE' });
+                this.fileFaces = this.fileFaces.filter(f => f.id !== faceId);
+                this.showToast('Face removed');
+            } catch (e) { this.showToast('Delete failed', 'error'); }
+        },
+        async redetectFaces(fileId) {
+            if (!fileId) return;
+            if (!confirm('Re-run face detection? This will replace existing face labels.')) return;
+            this.facesLoading = true;
+            try {
+                const r = await (await fetch(`/api/files/${fileId}/detect-faces`, { method: 'POST' })).json();
+                this.fileFaces = r.faces || [];
+                this.showToast('Faces re-detected');
+            } catch (e) { this.showToast('Detection failed', 'error'); }
+            this.facesLoading = false;
+        },
+
         // ─── Bulk Selection ───────────────────────────────
         toggleSelectionMode() {
             this.selectionMode = !this.selectionMode;
@@ -1029,30 +1080,62 @@ function app() {
         },
 
         // Calendar heatmap
-        renderHeatmap(data) {
+        observeHeatmap() {
+            const el = this.$refs.heatmap;
+            if (!el || el.dataset.observed) return;
+            el.dataset.observed = '1';
+            const io = new IntersectionObserver((entries) => {
+                for (const e of entries) {
+                    if (e.isIntersecting) {
+                        this.heatmapVisible = true;
+                        if (this.heatmapYear) this.loadHeatmap(this.heatmapYear);
+                        io.disconnect();
+                        break;
+                    }
+                }
+            }, { rootMargin: '200px' });
+            io.observe(el);
+        },
+
+        async loadHeatmap(year) {
+            if (!year) return;
+            this.heatmapYear = year;
+            this.heatmapLoading = true;
+            try {
+                const r = await fetch('/api/overview/heatmap?year=' + year);
+                const data = await r.json();
+                this.heatmapData = data.days || {};
+                if (data.available_years) this.heatmapYears = data.available_years;
+                this.$nextTick(() => this.renderHeatmap(year, this.heatmapData));
+            } catch (e) {
+                this.heatmapData = {};
+            }
+            this.heatmapLoading = false;
+        },
+
+        renderHeatmap(year, data) {
             if (!data) return;
             this.$nextTick(() => {
                 const el = this.$refs.heatmap;
                 if (!el) return;
-                const today = new Date();
-                const oneYearAgo = new Date(today);
-                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                // Start from the Sunday of the week of oneYearAgo
-                const start = new Date(oneYearAgo);
-                start.setDate(start.getDate() - start.getDay());
+                const start = new Date(Date.UTC(year, 0, 1));
+                // Align to Sunday before Jan 1
+                start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+                const end = new Date(Date.UTC(year, 11, 31));
 
                 const maxCount = Math.max(1, ...Object.values(data));
                 const weeks = [];
                 const d = new Date(start);
                 let week = [];
-                while (d <= today) {
+                while (d <= end) {
                     const key = d.toISOString().slice(0, 10);
                     const count = data[key] || 0;
                     let level = 0;
                     if (count > 0) level = Math.min(3, Math.ceil((count / maxCount) * 3));
-                    week.push({ date: key, count, level });
+                    const inYear = d.getUTCFullYear() === year;
+                    week.push({ date: key, count, level, inYear });
                     if (week.length === 7) { weeks.push(week); week = []; }
-                    d.setDate(d.getDate() + 1);
+                    d.setUTCDate(d.getUTCDate() + 1);
                 }
                 if (week.length) weeks.push(week);
 
@@ -1060,6 +1143,10 @@ function app() {
                 for (const w of weeks) {
                     html += '<div class="flex flex-col gap-[3px]">';
                     for (const cell of w) {
+                        if (!cell.inYear) {
+                            html += '<div class="w-2.5 h-2.5"></div>';
+                            continue;
+                        }
                         const cls = ['heatmap-0','heatmap-1','heatmap-2','heatmap-3'][cell.level];
                         html += `<div class="w-2.5 h-2.5 rounded-sm ${cls}" title="${cell.date}: ${cell.count} files"></div>`;
                     }
