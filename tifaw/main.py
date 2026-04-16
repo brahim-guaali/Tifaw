@@ -92,6 +92,65 @@ async def lifespan(app: FastAPI):
         if pruned:
             logger.info("Pruned %d stale rename proposals", pruned)
 
+        # One-time cleanup: re-resolve all locations using the
+        # offline geocoder so stale LLM-hallucinated cities are
+        # replaced with accurate values.
+        try:
+            from tifaw.indexer.pipeline import _resolve_location
+
+            cursor = await db.db.execute(
+                """SELECT id, metadata FROM files
+                WHERE metadata IS NOT NULL
+                  AND json_extract(metadata, '$.gps_latitude')
+                    IS NOT NULL"""
+            )
+            rows = await cursor.fetchall()
+            updated = 0
+            import json as _json
+
+            for row in rows:
+                try:
+                    meta = _json.loads(row["metadata"]) or {}
+                except Exception:
+                    continue
+                lat = meta.get("gps_latitude")
+                lng = meta.get("gps_longitude")
+                if lat is None or lng is None:
+                    continue
+                loc = _resolve_location(lat, lng)
+                if not loc:
+                    meta.pop("location_city", None)
+                    meta.pop("location_country", None)
+                else:
+                    new_city = loc.get("city")
+                    new_country = loc.get("country")
+                    if (
+                        meta.get("location_city") == new_city
+                        and meta.get("location_country") == new_country
+                    ):
+                        continue
+                    meta["location_city"] = new_city
+                    meta["location_country"] = new_country
+                await db.db.execute(
+                    "UPDATE files SET metadata=? WHERE id=?",
+                    (_json.dumps(meta), row["id"]),
+                )
+                updated += 1
+            if updated:
+                await db.db.commit()
+                logger.info(
+                    "Re-resolved locations for %d files using "
+                    "offline geocoder", updated,
+                )
+                # Invalidate cached narrative since locations changed
+                await db.db.execute(
+                    "DELETE FROM settings "
+                    "WHERE key IN ('ai_narrative', 'ai_digest')"
+                )
+                await db.db.commit()
+        except Exception:
+            logger.exception("Location re-resolution failed")
+
         # Re-queue videos that were indexed without content extraction
         # (before video-frame extraction was supported). Catches any
         # generic description that doesn't describe the visual content.

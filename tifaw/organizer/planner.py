@@ -136,6 +136,29 @@ async def _plan_by_ai_content(
     return result
 
 
+async def _get_files_under(
+    db: Database, folder_path: str, limit: int = 1000,
+) -> list[dict]:
+    """Return files whose ``path`` is under *folder_path*.
+
+    Works for any subfolder, not just top-level watch folders.
+    Matches only ``tier1`` or ``indexed`` files so we don't
+    touch files that errored out.
+    """
+    prefix = folder_path.rstrip("/") + "/"
+    cursor = await db.db.execute(
+        """SELECT * FROM files
+        WHERE path LIKE ? ESCAPE '\\'
+          AND status IN ('indexed', 'tier1')
+        ORDER BY path
+        LIMIT ?""",
+        (prefix.replace("\\", "\\\\").replace("%", "\\%")
+         .replace("_", "\\_") + "%", limit),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
 async def generate_organize_plan(
     folder_path: str,
     db: Database,
@@ -149,7 +172,7 @@ async def generate_organize_plan(
       - ``ai_content``: LLM-based grouping using descriptions/tags/categories.
       - ``date``: grouping by modification date (YYYY/Month).
     """
-    files = await db.get_files(watch_folder=folder_path, limit=1000)
+    files = await _get_files_under(db, folder_path, limit=1000)
     if not files:
         return {"folder": folder_path, "groups": []}
 

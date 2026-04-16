@@ -17,37 +17,44 @@ class ChatRequest(BaseModel):
 
 @router.post("/chat")
 async def chat(req: ChatRequest):
-    """Run a chat request on the dedicated chat LLM client.
+    """Run a chat request. Pauses indexing to free up Ollama."""
+    from tifaw.main import app, chat_llm, db
 
-    Indexing workers use a separate LLM client pool, so chat is
-    never blocked by indexing — both can run concurrently (subject
-    to Ollama's configured parallelism).
-    """
-    from tifaw.main import chat_llm, db
-
+    queue = getattr(app.state, "index_queue", None)
+    if queue:
+        queue.pause()
     try:
         response = await run_agent(req.message, db, chat_llm)
         return {"response": response}
     except Exception as e:
         return {"response": f"Error: {e}"}
+    finally:
+        if queue:
+            queue.resume()
 
 
 @router.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
-    """Stream chat response token by token using newline-delimited JSON.
+    """Stream chat response. Pauses indexing to keep latency low."""
+    from tifaw.main import app, chat_llm, db
 
-    Uses a dedicated chat LLM client; indexing is not paused.
-    """
-    from tifaw.main import chat_llm, db
+    queue = getattr(app.state, "index_queue", None)
 
     async def generate():
+        if queue:
+            queue.pause()
         try:
             async for chunk in run_agent_stream(
                 req.message, db, chat_llm,
             ):
                 yield chunk
         except Exception as e:
-            yield json.dumps({"type": "error", "text": str(e)}) + "\n"
+            yield json.dumps(
+                {"type": "error", "text": str(e)},
+            ) + "\n"
+        finally:
+            if queue:
+                queue.resume()
 
     return StreamingResponse(
         generate(),
