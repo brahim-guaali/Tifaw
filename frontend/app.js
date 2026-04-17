@@ -26,6 +26,8 @@ function app() {
         photosLoading: false,
         photosOffset: 0,
         photosStoryMonth: null,
+        photosSort: 'newest',          // 'newest' | 'oldest'
+        photosGroupByMonth: false,
 
         // People
         people: { named: [], unnamed: [] },
@@ -41,10 +43,15 @@ function app() {
         activeDocGroup: null,
         activeDocGroupTag: null,
         activeDocFiles: [],
+        documentsSort: 'newest',       // 'newest' | 'oldest'
+        documentsGroupByMonth: false,
+        allDocFiles: [],               // populated when group-by-month is on
 
         // Search
         searchQuery: '',
         searchResults: [],
+        searchSort: 'relevance',       // 'relevance' | 'newest' | 'oldest'
+        searchGroupByMonth: false,
 
         // Chat
         chatMessages: [],
@@ -95,6 +102,7 @@ function app() {
         // File detail
         selectedFile: null,
         textPreview: '',
+        textWrap: true,
 
         // Folder picker
         folderPicker: { open: false, path: '', dirs: [], parent: null, target: null, index: null },
@@ -361,7 +369,7 @@ function app() {
             if (reset) { this.photos = []; this.photosOffset = 0; }
             this.photosLoading = true;
             try {
-                let url = `/api/photos?limit=60&offset=${this.photosOffset}`;
+                let url = `/api/photos?limit=60&offset=${this.photosOffset}&sort=${this.photosSort}`;
                 if (this.photosActivePerson) url += `&person=${encodeURIComponent(this.photosActivePerson)}`;
                 if (this.photosActiveCategory) url += `&category=${encodeURIComponent(this.photosActiveCategory)}`;
                 if (this.photosStoryMonth) {
@@ -495,12 +503,41 @@ function app() {
             this.activeDocGroup = name;
             this.activeDocGroupTag = tag;
             try {
-                let url = `/api/documents/${encodeURIComponent(name)}`;
-                if (tag) url += `?tag=${encodeURIComponent(tag)}`;
+                let url = `/api/documents/${encodeURIComponent(name)}?sort=${this.documentsSort}`;
+                if (tag) url += `&tag=${encodeURIComponent(tag)}`;
                 const r = await fetch(url);
                 const data = await r.json();
                 this.activeDocFiles = data.files || [];
             } catch (e) { console.error('Doc group failed:', e); }
+        },
+
+        async loadAllDocuments() {
+            this.documentsLoading = true;
+            try {
+                const r = await fetch(`/api/documents/all?sort=${this.documentsSort}&limit=500`);
+                const data = await r.json();
+                this.allDocFiles = data.files || [];
+            } catch (e) { console.error('All documents failed:', e); }
+            this.documentsLoading = false;
+        },
+
+        onDocumentsSortChange() {
+            if (this.documentsGroupByMonth) {
+                this.loadAllDocuments();
+            } else if (this.activeDocGroup) {
+                this.openDocGroup(this.activeDocGroup, this.activeDocGroupTag);
+            }
+        },
+
+        onDocumentsGroupToggle() {
+            if (this.documentsGroupByMonth) {
+                this.activeDocGroup = null;
+                this.activeDocGroupTag = null;
+                this.activeDocFiles = [];
+                this.loadAllDocuments();
+            } else {
+                this.allDocFiles = [];
+            }
         },
 
         async discoverGroups() {
@@ -525,7 +562,7 @@ function app() {
         async performSearch() {
             if (!this.searchQuery.trim()) { this.searchResults = []; return; }
             try {
-                const r = await fetch(`/api/search?q=${encodeURIComponent(this.searchQuery)}`);
+                const r = await fetch(`/api/search?q=${encodeURIComponent(this.searchQuery)}&sort=${this.searchSort}`);
                 const data = await r.json();
                 this.searchResults = data.results || [];
             } catch (e) { this.searchResults = []; }
@@ -958,6 +995,14 @@ function app() {
             await fetch(`/api/files/${id}/reveal`, { method: 'POST' });
             this.showToast('Opened in Finder');
         },
+        async openFile(id) {
+            if (!id) return;
+            try {
+                const r = await fetch(`/api/files/${id}/open`, { method: 'POST' });
+                if (r.ok) this.showToast('Opened');
+                else this.showToast('Could not open file', 'error');
+            } catch (e) { this.showToast('Could not open file', 'error'); }
+        },
         async deleteFile(id, fromDisk = false) {
             if (!id || !confirm(fromDisk ? 'Move this file to Trash?' : 'Remove from Tifaw?')) return;
             try {
@@ -993,11 +1038,37 @@ function app() {
         },
 
         // ─── Helpers ──────────────────────────────────────
+        formatMonthKey(iso) {
+            if (!iso || typeof iso !== 'string' || iso.length < 7) return '';
+            return iso.slice(0, 7); // "YYYY-MM"
+        },
+        formatMonthLabel(key) {
+            if (!key) return 'Unknown date';
+            const [y, m] = key.split('-');
+            const names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const idx = parseInt(m, 10) - 1;
+            return (names[idx] || m) + ' ' + y;
+        },
+        groupByMonth(files) {
+            const map = new Map();
+            const order = [];
+            for (const f of files) {
+                const key = this.formatMonthKey(f.created_at) || 'unknown';
+                if (!map.has(key)) { map.set(key, []); order.push(key); }
+                map.get(key).push(f);
+            }
+            return order.map(key => ({
+                key,
+                label: key === 'unknown' ? 'Unknown date' : this.formatMonthLabel(key),
+                files: map.get(key),
+            }));
+        },
         isImage(ext) { return ['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp'].includes(ext); },
         isVideo(ext) { return ['.mp4','.mov','.webm','.avi','.mkv'].includes(ext); },
+        isAudio(ext) { return ['.mp3','.wav','.ogg','.m4a','.flac','.aac'].includes(ext); },
         isPdf(ext) { return ext === '.pdf'; },
         isText(ext) { return ['.txt','.md','.csv','.json','.xml','.yaml','.yml','.log','.ini','.cfg','.conf','.sh','.bash','.zsh','.py','.js','.ts','.html','.css','.go','.rs','.java','.c','.cpp','.h','.rb','.php','.swift','.kt','.sql','.r','.lua','.pl','.toml','.env'].includes(ext); },
-        isPreviewable(ext) { return this.isImage(ext) || this.isVideo(ext) || this.isPdf(ext) || this.isText(ext); },
+        isPreviewable(ext) { return this.isImage(ext) || this.isVideo(ext) || this.isAudio(ext) || this.isPdf(ext) || this.isText(ext); },
 
         async loadTextPreview(fileId) {
             try {

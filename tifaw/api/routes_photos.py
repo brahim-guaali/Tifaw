@@ -15,6 +15,7 @@ async def get_photos(
     date_from: str | None = None,
     date_to: str | None = None,
     has_location: bool | None = None,
+    sort: str = Query(default="newest"),
     limit: int = Query(default=50, le=200),
     offset: int = 0,
 ):
@@ -57,9 +58,10 @@ async def get_photos(
     )).fetchone()
 
     # Get photos
+    order_dir = "ASC" if sort == "oldest" else "DESC"
     rows = await (await d.execute(
         f"""SELECT f.* FROM files f WHERE {where}
-        ORDER BY f.created_at DESC LIMIT ? OFFSET ?""",
+        ORDER BY f.created_at {order_dir} LIMIT ? OFFSET ?""",
         params + [limit, offset],
     )).fetchall()
 

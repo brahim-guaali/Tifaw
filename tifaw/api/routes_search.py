@@ -8,10 +8,14 @@ router = APIRouter(tags=["search"])
 
 
 @router.get("/search")
-async def search_files(q: str = Query(..., min_length=1), limit: int = Query(default=20, le=100)):
+async def search_files(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(default=20, le=100),
+    sort: str = Query(default="relevance"),
+):
     from tifaw.main import db
 
-    results = await db.search_files(q, limit=limit)
+    results = await db.search_files(q, limit=limit, sort=sort)
     for r in results:
         tags = r.get("tags")
         if isinstance(tags, str):

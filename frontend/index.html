@@ -609,21 +609,58 @@
                         <button @click="filterPhotosByCategory(c.name)" class="text-[11px] px-2.5 py-1 rounded-full border transition-colors" :class="photosActiveCategory===c.name ? 'bg-blue-500 text-white border-blue-500' : 'border-gray-200 dark:border-gray-700 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'" x-text="c.name + ' (' + c.count + ')'"></button>
                     </template>
                 </div>
+                <!-- Sort + Group toolbar -->
+                <div class="flex items-center gap-3 mt-3">
+                    <select x-model="photosSort" @change="loadPhotos(true)" class="text-xs px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
+                        <option value="newest">Newest first</option>
+                        <option value="oldest">Oldest first</option>
+                    </select>
+                    <label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                        <input type="checkbox" x-model="photosGroupByMonth" class="rounded">
+                        Group by month
+                    </label>
+                </div>
             </div>
             <div class="flex-1 overflow-y-auto px-6 sm:px-10 pb-6" @scroll="onPhotosScroll($event)">
-                <div class="masonry-grid">
-                    <template x-for="photo in photos" :key="photo.id">
-                        <div @click="selectionMode ? toggleSelect(photo) : (selectedFile=photo)" class="photo-card card-enter relative" :class="isSelected(photo.id) && 'ring-3 ring-blue-500 ring-offset-2 rounded-lg'">
-                            <div x-show="selectionMode" class="absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center" :class="isSelected(photo.id) ? 'bg-blue-500' : 'bg-black/30'">
-                                <svg x-show="isSelected(photo.id)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" d="M5 13l4 4L19 7"/></svg>
+                <!-- Flat masonry -->
+                <template x-if="!photosGroupByMonth">
+                    <div class="masonry-grid">
+                        <template x-for="photo in photos" :key="photo.id">
+                            <div @click="selectionMode ? toggleSelect(photo) : (selectedFile=photo)" class="photo-card card-enter relative" :class="isSelected(photo.id) && 'ring-4 ring-blue-500 rounded-lg'">
+                                <div x-show="selectionMode" class="absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center" :class="isSelected(photo.id) ? 'bg-blue-500' : 'bg-black/30'">
+                                    <svg x-show="isSelected(photo.id)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" d="M5 13l4 4L19 7"/></svg>
+                                </div>
+                                <img :src="'/api/files/'+photo.id+'/preview'" class="w-full" loading="lazy" onerror="this.parentElement.remove()">
+                                <div class="photo-overlay">
+                                    <span class="text-white text-[11px] truncate privacy-blur" x-text="photo.filename"></span>
+                                </div>
                             </div>
-                            <img :src="'/api/files/'+photo.id+'/preview'" class="w-full" loading="lazy" onerror="this.parentElement.remove()">
-                            <div class="photo-overlay">
-                                <span class="text-white text-[11px] truncate privacy-blur" x-text="photo.filename"></span>
+                        </template>
+                    </div>
+                </template>
+                <!-- Grouped by month -->
+                <template x-if="photosGroupByMonth">
+                    <div class="space-y-6">
+                        <template x-for="group in groupByMonth(photos)" :key="group.key">
+                            <div>
+                                <h3 class="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-3" x-text="group.label"></h3>
+                                <div class="masonry-grid">
+                                    <template x-for="photo in group.files" :key="photo.id">
+                                        <div @click="selectionMode ? toggleSelect(photo) : (selectedFile=photo)" class="photo-card card-enter relative" :class="isSelected(photo.id) && 'ring-4 ring-blue-500 rounded-lg'">
+                                            <div x-show="selectionMode" class="absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center" :class="isSelected(photo.id) ? 'bg-blue-500' : 'bg-black/30'">
+                                                <svg x-show="isSelected(photo.id)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" d="M5 13l4 4L19 7"/></svg>
+                                            </div>
+                                            <img :src="'/api/files/'+photo.id+'/preview'" class="w-full" loading="lazy" onerror="this.parentElement.remove()">
+                                            <div class="photo-overlay">
+                                                <span class="text-white text-[11px] truncate privacy-blur" x-text="photo.filename"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
                             </div>
-                        </div>
-                    </template>
-                </div>
+                        </template>
+                    </div>
+                </template>
                 <div x-show="photosLoading" class="text-center py-8 text-sm text-gray-400">Loading...</div>
                 <div x-show="!photosLoading && photos.length===0" class="text-center py-16">
                     <div class="text-4xl opacity-40 mb-3">&#x1F4F7;</div>
@@ -681,7 +718,7 @@
             <!-- Person's photos -->
             <div x-show="activePerson" class="masonry-grid">
                 <template x-for="photo in personPhotos" :key="photo.id">
-                    <div @click="selectionMode ? toggleSelect(photo) : (selectedFile=photo)" class="photo-card card-enter relative" :class="isSelected(photo.id) && 'ring-3 ring-blue-500 ring-offset-2 rounded-lg'">
+                    <div @click="selectionMode ? toggleSelect(photo) : (selectedFile=photo)" class="photo-card card-enter relative" :class="isSelected(photo.id) && 'ring-4 ring-blue-500 rounded-lg'">
                         <img :src="'/api/files/'+photo.id+'/preview'" class="w-full" loading="lazy">
                     </div>
                 </template>
@@ -731,13 +768,49 @@
         <div x-show="view==='documents'" class="p-6 sm:p-10">
             <div class="flex items-center justify-between mb-6">
                 <h1 class="text-2xl font-bold tracking-tight">Documents</h1>
-                <button x-show="!activeDocGroup" @click="discoverGroups()" :disabled="discoveringGroups" class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                <button x-show="!activeDocGroup && !documentsGroupByMonth" @click="discoverGroups()" :disabled="discoveringGroups" class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
                     <span x-show="!discoveringGroups">Discover Groups</span>
                     <span x-show="discoveringGroups">Analyzing...</span>
                 </button>
             </div>
 
-            <div x-show="!activeDocGroup" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Sort + Group toolbar -->
+            <div class="flex items-center gap-3 mb-5">
+                <select x-model="documentsSort" @change="onDocumentsSortChange()" class="text-xs px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                </select>
+                <label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                    <input type="checkbox" x-model="documentsGroupByMonth" @change="onDocumentsGroupToggle()" class="rounded">
+                    Group by month
+                </label>
+            </div>
+
+            <!-- Month-grouped flat view (replaces category layout when on) -->
+            <template x-if="documentsGroupByMonth">
+                <div class="space-y-6">
+                    <template x-for="group in groupByMonth(allDocFiles)" :key="group.key">
+                        <div>
+                            <h3 class="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2" x-text="group.label"></h3>
+                            <div class="space-y-1">
+                                <template x-for="file in group.files" :key="file.id">
+                                    <div @click="selectionMode ? toggleSelect(file) : (selectedFile=file)" :class="isSelected(file.id) && 'bg-blue-50 dark:bg-blue-500/10'" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white dark:hover:bg-gray-800/50 cursor-pointer transition-colors">
+                                        <span class="text-lg" x-text="getFileIcon(file.extension)"></span>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="text-sm font-medium truncate" x-text="file.filename"></div>
+                                            <div class="text-xs text-gray-400 truncate" x-text="file.description"></div>
+                                        </div>
+                                        <span x-show="file.category" class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-500 flex-shrink-0" x-text="file.category"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="!documentsLoading && allDocFiles.length===0" class="text-center py-16 text-sm text-gray-400">No documents indexed yet.</div>
+                </div>
+            </template>
+
+            <div x-show="!activeDocGroup && !documentsGroupByMonth" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <template x-for="g in documentGroups" :key="g.name">
                     <div @click="openDocGroup(g.name, g.tag)" class="card-enter card-lift bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 p-5 cursor-pointer group">
                         <div class="flex items-center justify-between mb-3">
@@ -760,7 +833,7 @@
             </div>
 
             <!-- Documents empty state -->
-            <div x-show="!documentsLoading && !activeDocGroup && documentGroups.length === 0" class="flex flex-col items-center justify-center py-20 text-center">
+            <div x-show="!documentsLoading && !activeDocGroup && !documentsGroupByMonth && documentGroups.length === 0" class="flex flex-col items-center justify-center py-20 text-center">
                 <div class="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-4">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                 </div>
@@ -770,7 +843,7 @@
             </div>
 
             <!-- Document group detail -->
-            <div x-show="activeDocGroup">
+            <div x-show="activeDocGroup && !documentsGroupByMonth">
                 <button @click="activeDocGroup=null; activeDocFiles=[]; selectedFiles=[]; selectionMode=false" class="text-sm text-blue-500 hover:text-blue-400 flex items-center gap-1 mb-4">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
                     All Documents
@@ -834,22 +907,85 @@
                 </div>
                 <button x-show="searchResults.length > 0" @click="toggleSelectionMode()" class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex-shrink-0 self-center" :class="selectionMode ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'" x-text="selectionMode ? 'Cancel' : 'Select'"></button>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <template x-for="file in searchResults" :key="file.id">
-                    <div @click="selectionMode ? toggleSelect(file) : (selectedFile=file)" class="card-lift bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden cursor-pointer relative" :class="isSelected(file.id) && 'ring-3 ring-blue-500 ring-offset-2'">
-                        <div x-show="isPreviewable(file.extension)" class="aspect-video bg-gray-100 dark:bg-gray-900 overflow-hidden">
-                            <img x-show="isImage(file.extension)" :src="'/api/files/'+file.id+'/preview'" class="w-full h-full object-cover" loading="lazy" onerror="this.parentElement.style.display='none'">
-                        </div>
-                        <div class="p-3">
-                            <div class="text-sm font-medium truncate" x-text="file.filename"></div>
-                            <div class="text-xs text-gray-400 line-clamp-2 mt-0.5" x-text="file.description"></div>
-                            <div class="flex gap-1 mt-2">
-                                <span x-show="file.category" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-500" x-text="file.category"></span>
+            <!-- Sort + Group toolbar -->
+            <div x-show="searchResults.length > 0" class="flex items-center gap-3 mb-4">
+                <select x-model="searchSort" @change="performSearch()" class="text-xs px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
+                    <option value="relevance">Relevance</option>
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                </select>
+                <label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                    <input type="checkbox" x-model="searchGroupByMonth" class="rounded">
+                    Group by month
+                </label>
+            </div>
+            <!-- Flat grid -->
+            <template x-if="searchResults.length > 0 && !searchGroupByMonth">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <template x-for="file in searchResults" :key="file.id">
+                        <div @click="selectionMode ? toggleSelect(file) : (selectedFile=file)" class="card-lift bg-white dark:bg-gray-800/60 rounded-xl border overflow-hidden cursor-pointer relative transition-all" :class="isSelected(file.id) ? 'ring-4 ring-blue-500 border-blue-500' : 'border-gray-100 dark:border-gray-700/50'">
+                            <div x-show="selectionMode" class="absolute top-2 left-2 z-10 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center shadow" :class="isSelected(file.id) ? 'bg-blue-500' : 'bg-black/30'">
+                                <svg x-show="isSelected(file.id)" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" d="M5 13l4 4L19 7"/></svg>
+                            </div>
+                            <div x-show="isAudio(file.extension)" class="aspect-video bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center">
+                                <svg class="w-12 h-12 text-white/80" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                            </div>
+                            <div x-show="isPreviewable(file.extension) && !isAudio(file.extension)" class="aspect-video bg-gray-100 dark:bg-gray-900 overflow-hidden relative">
+                                <img :src="'/api/files/'+file.id+'/thumbnail'" class="w-full h-full object-cover privacy-blur" loading="lazy" onerror="this.parentElement.style.display='none'">
+                                <div x-show="isVideo(file.extension)" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <div class="w-10 h-10 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-3">
+                                <div class="text-sm font-medium truncate" x-text="file.filename"></div>
+                                <div class="text-xs text-gray-400 line-clamp-2 mt-0.5" x-text="file.description"></div>
+                                <div class="flex gap-1 mt-2">
+                                    <span x-show="file.category" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-500" x-text="file.category"></span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </template>
-            </div>
+                    </template>
+                </div>
+            </template>
+            <!-- Grouped by month -->
+            <template x-if="searchResults.length > 0 && searchGroupByMonth">
+                <div class="space-y-8">
+                    <template x-for="group in groupByMonth(searchResults)" :key="group.key">
+                        <div>
+                            <h3 class="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-3" x-text="group.label"></h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                <template x-for="file in group.files" :key="file.id">
+                                    <div @click="selectionMode ? toggleSelect(file) : (selectedFile=file)" class="card-lift bg-white dark:bg-gray-800/60 rounded-xl border overflow-hidden cursor-pointer relative transition-all" :class="isSelected(file.id) ? 'ring-4 ring-blue-500 border-blue-500' : 'border-gray-100 dark:border-gray-700/50'">
+                                        <div x-show="selectionMode" class="absolute top-2 left-2 z-10 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center shadow" :class="isSelected(file.id) ? 'bg-blue-500' : 'bg-black/30'">
+                                            <svg x-show="isSelected(file.id)" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" d="M5 13l4 4L19 7"/></svg>
+                                        </div>
+                                        <div x-show="isAudio(file.extension)" class="aspect-video bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center">
+                                            <svg class="w-12 h-12 text-white/80" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                                        </div>
+                                        <div x-show="isPreviewable(file.extension) && !isAudio(file.extension)" class="aspect-video bg-gray-100 dark:bg-gray-900 overflow-hidden relative">
+                                            <img :src="'/api/files/'+file.id+'/thumbnail'" class="w-full h-full object-cover privacy-blur" loading="lazy" onerror="this.parentElement.style.display='none'">
+                                            <div x-show="isVideo(file.extension)" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                <div class="w-10 h-10 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
+                                                    <svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="p-3">
+                                            <div class="text-sm font-medium truncate" x-text="file.filename"></div>
+                                            <div class="text-xs text-gray-400 line-clamp-2 mt-0.5" x-text="file.description"></div>
+                                            <div class="flex gap-1 mt-2">
+                                                <span x-show="file.category" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-500" x-text="file.category"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
             <div x-show="!searchQuery" class="text-center py-16"><div class="text-4xl opacity-40 mb-3">&#x1F50D;</div><div class="text-base font-semibold text-gray-400 mb-1">Search everything</div><div class="text-sm text-gray-400 max-w-xs mx-auto">Search by name, content, tags, people, or description.</div></div>
             <div x-show="searchQuery && searchResults.length===0" class="text-center py-16"><div class="text-4xl opacity-40 mb-3">&#x1F50D;</div><div class="text-sm text-gray-400">No results for "<span x-text="searchQuery"></span>"</div></div>
         </div>
@@ -1131,67 +1267,109 @@
 
     <!-- ═══════════════════════ FILE DETAIL MODAL ═══════════════════════ -->
     <div x-show="selectedFile" x-transition class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="selectedFile=null">
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto" x-show="selectedFile" x-transition.scale.95
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
+             :class="selectedFile && isPreviewable(selectedFile?.extension) ? 'max-w-6xl' : 'max-w-lg'"
+             x-show="selectedFile" x-transition.scale.95
              x-init="$watch('selectedFile', f => { if (f && isImage(f.extension)) loadFaces(f.id); else fileFaces=[]; if (f && isText(f.extension)) loadTextPreview(f.id); else textPreview=''; })">
-            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
                 <h2 class="text-sm font-semibold truncate pr-4 privacy-blur" x-text="selectedFile?.filename"></h2>
                 <button @click="selectedFile=null" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">&times;</button>
             </div>
-            <div x-show="selectedFile && isPreviewable(selectedFile?.extension)" class="bg-gray-100 dark:bg-gray-900/50">
-                <img x-show="selectedFile && isImage(selectedFile?.extension)" :src="selectedFile ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full max-h-64 object-contain" loading="lazy">
-                <video x-show="selectedFile && isVideo(selectedFile?.extension)" :src="selectedFile ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full max-h-64" controls preload="metadata"></video>
-                <iframe x-show="selectedFile && isPdf(selectedFile?.extension)" :src="selectedFile && isPdf(selectedFile?.extension) ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full h-96 border-0"></iframe>
-                <pre x-show="selectedFile && isText(selectedFile?.extension)" x-text="textPreview" class="w-full max-h-96 overflow-auto p-4 bg-gray-50 dark:bg-gray-950 text-xs font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words"></pre>
-            </div>
-            <!-- Faces -->
-            <div x-show="selectedFile && isImage(selectedFile?.extension)" class="px-5 pt-4">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">People</span>
-                    <div class="flex items-center gap-3">
-                        <button x-show="fileFaces.length>0" @click="redetectFaces(selectedFile?.id)" :disabled="facesLoading" class="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium disabled:opacity-40">Re-detect</button>
-                        <button x-show="fileFaces.length===0" @click="detectFaces(selectedFile?.id)" :disabled="facesLoading" class="text-[11px] text-blue-500 font-medium disabled:opacity-40"><span x-show="!facesLoading">Detect</span><span x-show="facesLoading">...</span></button>
+
+            <!-- Body: split layout for previewable, single column otherwise -->
+            <div class="flex-1 min-h-0 flex flex-col overflow-hidden"
+                 :class="selectedFile && isPreviewable(selectedFile?.extension) ? 'md:flex-row' : ''">
+
+                <!-- Preview column -->
+                <template x-if="selectedFile && isPreviewable(selectedFile?.extension)">
+                    <div class="md:flex-1 md:min-w-0 bg-gray-100 dark:bg-gray-900/50 flex flex-col items-stretch justify-stretch overflow-hidden min-h-[40vh] md:min-h-0">
+                        <!-- Image -->
+                        <div x-show="selectedFile && isImage(selectedFile?.extension)" class="flex-1 flex items-center justify-center overflow-auto">
+                            <img :src="selectedFile && isImage(selectedFile?.extension) ? '/api/files/'+selectedFile.id+'/preview' : ''" class="max-w-full max-h-[80vh] object-contain privacy-blur" loading="lazy">
+                        </div>
+                        <!-- Video -->
+                        <div x-show="selectedFile && isVideo(selectedFile?.extension)" class="flex-1 flex items-center justify-center bg-black overflow-hidden">
+                            <video :src="selectedFile && isVideo(selectedFile?.extension) ? '/api/files/'+selectedFile.id+'/preview' : ''" class="max-w-full max-h-[80vh]" controls preload="metadata"></video>
+                        </div>
+                        <!-- Audio -->
+                        <div x-show="selectedFile && isAudio(selectedFile?.extension)" class="flex-1 flex flex-col items-center justify-center p-8 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 min-h-[40vh]">
+                            <svg class="w-24 h-24 text-white/80 mb-8" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                            <div class="text-center mb-6">
+                                <div class="text-white font-semibold text-lg truncate max-w-md privacy-blur" x-text="selectedFile?.filename"></div>
+                            </div>
+                            <audio :src="selectedFile && isAudio(selectedFile?.extension) ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full max-w-md" controls preload="metadata"></audio>
+                        </div>
+                        <!-- PDF -->
+                        <iframe x-show="selectedFile && isPdf(selectedFile?.extension)" :src="selectedFile && isPdf(selectedFile?.extension) ? '/api/files/'+selectedFile.id+'/preview' : ''" class="w-full flex-1 min-h-[70vh] border-0"></iframe>
+                        <!-- Text/code -->
+                        <div x-show="selectedFile && isText(selectedFile?.extension)" class="flex-1 flex flex-col min-h-0">
+                            <div class="flex items-center justify-end gap-3 px-3 py-1.5 border-b border-gray-200/60 dark:border-gray-800 bg-white/60 dark:bg-gray-900/60 flex-shrink-0">
+                                <label class="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1.5 cursor-pointer select-none"><input type="checkbox" x-model="textWrap" class="rounded">Wrap lines</label>
+                            </div>
+                            <pre x-text="textPreview" class="flex-1 overflow-auto p-4 bg-gray-50 dark:bg-gray-950 text-xs font-mono text-gray-700 dark:text-gray-300 leading-relaxed privacy-blur" :class="textWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"></pre>
+                        </div>
                     </div>
-                </div>
-                <div x-show="fileFaces.length>0" class="flex flex-wrap gap-3 mb-2">
-                    <template x-for="face in fileFaces" :key="face.id">
-                        <div class="flex flex-col items-center gap-1 w-16 group relative">
-                            <div class="w-12 h-12 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 ring-2" :class="isPlaceholderLabel(face.label)?'ring-amber-300 dark:ring-amber-500/50':'ring-blue-300 dark:ring-blue-500/50'"><img x-show="face.has_thumbnail" :src="'/api/faces/'+face.id+'/thumbnail'" class="w-full h-full object-cover" loading="lazy"></div>
-                            <!-- Delete X (only on hover) -->
-                            <button @click="deleteFace(face.id)" class="absolute top-0 right-0 -mt-1 -mr-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow" title="Remove this face">
-                                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                            </button>
-                            <!-- Named label: click to edit -->
-                            <template x-if="face.label && !isPlaceholderLabel(face.label) && editingFaceId !== face.id">
-                                <button @click="startEditFace(face)" class="text-[10px] font-medium text-blue-600 dark:text-blue-400 truncate w-full text-center hover:underline" :title="'Click to rename ' + face.label" x-text="face.label"></button>
-                            </template>
-                            <!-- Editing existing label -->
-                            <template x-if="editingFaceId === face.id">
-                                <input type="text" x-model="editLabel" x-init="$nextTick(() => $el.focus())" @keydown.enter="saveEditFace(face.id)" @keydown.escape="cancelEditFace()" @blur="saveEditFace(face.id)" class="w-full text-[10px] px-1 py-0.5 bg-gray-50 dark:bg-gray-800 border border-blue-400 rounded text-center outline-none focus:border-blue-500">
-                            </template>
-                            <!-- Placeholder: name input -->
-                            <template x-if="(!face.label || isPlaceholderLabel(face.label)) && editingFaceId !== face.id">
-                                <input type="text" :placeholder="face.label||'Name'" x-model="labelInput[face.id]" @keydown.enter="labelFace(face.id)" @blur="if(labelInput[face.id]?.trim()) labelFace(face.id)" class="w-full text-[10px] px-1 py-0.5 bg-gray-50 dark:bg-gray-800 border border-amber-300 dark:border-amber-500/40 rounded text-center outline-none focus:border-blue-500 placeholder:text-amber-400">
+                </template>
+
+                <!-- Info column (sidebar on desktop when previewable, full-width otherwise) -->
+                <div class="overflow-y-auto"
+                     :class="selectedFile && isPreviewable(selectedFile?.extension) ? 'md:w-80 md:flex-shrink-0 md:border-l border-t md:border-t-0 border-gray-100 dark:border-gray-800' : ''">
+                    <!-- Faces -->
+                    <div x-show="selectedFile && isImage(selectedFile?.extension)" class="px-5 pt-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">People</span>
+                            <div class="flex items-center gap-3">
+                                <button x-show="fileFaces.length>0" @click="redetectFaces(selectedFile?.id)" :disabled="facesLoading" class="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium disabled:opacity-40">Re-detect</button>
+                                <button x-show="fileFaces.length===0" @click="detectFaces(selectedFile?.id)" :disabled="facesLoading" class="text-[11px] text-blue-500 font-medium disabled:opacity-40"><span x-show="!facesLoading">Detect</span><span x-show="facesLoading">...</span></button>
+                            </div>
+                        </div>
+                        <div x-show="fileFaces.length>0" class="flex flex-wrap gap-3 mb-2">
+                            <template x-for="face in fileFaces" :key="face.id">
+                                <div class="flex flex-col items-center gap-1 w-16 group relative">
+                                    <div class="w-12 h-12 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 ring-2" :class="isPlaceholderLabel(face.label)?'ring-amber-300 dark:ring-amber-500/50':'ring-blue-300 dark:ring-blue-500/50'"><img x-show="face.has_thumbnail" :src="'/api/faces/'+face.id+'/thumbnail'" class="w-full h-full object-cover" loading="lazy"></div>
+                                    <!-- Delete X (only on hover) -->
+                                    <button @click="deleteFace(face.id)" class="absolute top-0 right-0 -mt-1 -mr-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow" title="Remove this face">
+                                        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
+                                    <!-- Named label: click to edit -->
+                                    <template x-if="face.label && !isPlaceholderLabel(face.label) && editingFaceId !== face.id">
+                                        <button @click="startEditFace(face)" class="text-[10px] font-medium text-blue-600 dark:text-blue-400 truncate w-full text-center hover:underline" :title="'Click to rename ' + face.label" x-text="face.label"></button>
+                                    </template>
+                                    <!-- Editing existing label -->
+                                    <template x-if="editingFaceId === face.id">
+                                        <input type="text" x-model="editLabel" x-init="$nextTick(() => $el.focus())" @keydown.enter="saveEditFace(face.id)" @keydown.escape="cancelEditFace()" @blur="saveEditFace(face.id)" class="w-full text-[10px] px-1 py-0.5 bg-gray-50 dark:bg-gray-800 border border-blue-400 rounded text-center outline-none focus:border-blue-500">
+                                    </template>
+                                    <!-- Placeholder: name input -->
+                                    <template x-if="(!face.label || isPlaceholderLabel(face.label)) && editingFaceId !== face.id">
+                                        <input type="text" :placeholder="face.label||'Name'" x-model="labelInput[face.id]" @keydown.enter="labelFace(face.id)" @blur="if(labelInput[face.id]?.trim()) labelFace(face.id)" class="w-full text-[10px] px-1 py-0.5 bg-gray-50 dark:bg-gray-800 border border-amber-300 dark:border-amber-500/40 rounded text-center outline-none focus:border-blue-500 placeholder:text-amber-400">
+                                    </template>
+                                </div>
                             </template>
                         </div>
-                    </template>
-                </div>
-            </div>
-            <div class="p-5 space-y-2.5">
-                <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Description</span><span class="text-sm text-gray-600 dark:text-gray-300" x-text="selectedFile?.description||'Not yet analyzed'"></span></div>
-                <div class="flex gap-3 items-center"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0">Category</span><span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" x-text="selectedFile?.category"></span></div>
-                <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Tags</span><div class="flex flex-wrap gap-1"><template x-for="tag in (selectedFile?.tags||[])" :key="tag"><span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-500" x-text="tag"></span></template></div></div>
-                <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Path</span><span class="text-xs text-gray-400 break-all privacy-blur" x-text="selectedFile?.path"></span></div>
-                <div class="pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 flex-wrap">
-                    <button @click="revealFile(selectedFile?.id)" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/></svg>
-                        Finder
-                    </button>
-                    <button @click="reindexFile(selectedFile?.id)" class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Re-index</button>
-                    <div class="flex-1"></div>
-                    <button @click="deleteFile(selectedFile?.id, true)" class="flex items-center gap-1 px-3 py-1.5 text-red-500 text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
-                        Trash
-                    </button>
+                    </div>
+                    <div class="p-5 space-y-2.5">
+                        <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Description</span><span class="text-sm text-gray-600 dark:text-gray-300" x-text="selectedFile?.description||'Not yet analyzed'"></span></div>
+                        <div class="flex gap-3 items-center"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0">Category</span><span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" x-text="selectedFile?.category"></span></div>
+                        <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Tags</span><div class="flex flex-wrap gap-1"><template x-for="tag in (selectedFile?.tags||[])" :key="tag"><span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-500" x-text="tag"></span></template></div></div>
+                        <div class="flex gap-3"><span class="text-[10px] text-gray-400 uppercase w-20 flex-shrink-0 pt-0.5">Path</span><span class="text-xs text-gray-400 break-all privacy-blur" x-text="selectedFile?.path"></span></div>
+                        <div class="pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 flex-wrap">
+                            <button @click="openFile(selectedFile?.id)" class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-medium rounded-lg hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+                                Open
+                            </button>
+                            <button @click="revealFile(selectedFile?.id)" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/></svg>
+                                Finder
+                            </button>
+                            <button @click="reindexFile(selectedFile?.id)" class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Re-index</button>
+                            <div class="flex-1"></div>
+                            <button @click="deleteFile(selectedFile?.id, true)" class="flex items-center gap-1 px-3 py-1.5 text-red-500 text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                                Trash
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

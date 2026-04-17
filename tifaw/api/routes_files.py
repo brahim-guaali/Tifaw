@@ -206,6 +206,29 @@ async def reveal_file(file_id: int):
     return {"status": "revealed", "path": str(path)}
 
 
+@router.post("/files/{file_id}/open")
+async def open_file(file_id: int):
+    """Open the file in the system's default application."""
+    from tifaw.main import db
+
+    file = await db.get_file(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    path = Path(file["path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File no longer exists on disk")
+
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    elif sys.platform == "win32":
+        os.startfile(str(path))  # type: ignore[attr-defined]
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
+
+    return {"status": "opened", "path": str(path)}
+
+
 @router.delete("/files/{file_id}")
 async def delete_file(file_id: int, from_disk: bool = Query(default=False)):
     """Delete a file from the database, and optionally from disk."""

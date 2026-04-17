@@ -315,13 +315,21 @@ class Database:
 
     # --- Search ---
 
-    async def search_files(self, query: str, limit: int = 20) -> list[dict]:
+    async def search_files(
+        self, query: str, limit: int = 20, sort: str = "relevance",
+    ) -> list[dict]:
+        if sort == "newest":
+            order_by = "f.created_at DESC"
+        elif sort == "oldest":
+            order_by = "f.created_at ASC"
+        else:
+            order_by = "files_fts.rank"
         cursor = await self.db.execute(
-            """SELECT f.*, files_fts.rank
+            f"""SELECT f.*, files_fts.rank
             FROM files_fts
             JOIN files f ON f.id = files_fts.rowid
             WHERE files_fts MATCH ?
-            ORDER BY files_fts.rank
+            ORDER BY {order_by}
             LIMIT ?""",
             (query, limit),
         )

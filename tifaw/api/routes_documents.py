@@ -120,16 +120,65 @@ async def get_document_groups():
     return {"groups": groups}
 
 
+@router.get("/documents/all")
+async def get_all_documents(
+    sort: str = Query(default="newest"),
+    limit: int = Query(default=500, le=2000),
+    offset: int = 0,
+):
+    """Flat list of all document-category files, for month-grouped view."""
+    from tifaw.main import db
+
+    d = db.db
+
+    # Collect all category values across purpose groups
+    all_cats: list[str] = []
+    for cfg in _PURPOSE_GROUPS.values():
+        for c in cfg["categories"]:
+            if c not in all_cats:
+                all_cats.append(c)
+
+    placeholders = ",".join("?" for _ in all_cats)
+    order_dir = "ASC" if sort == "oldest" else "DESC"
+
+    total_row = await (await d.execute(
+        f"SELECT COUNT(*) as c FROM files "
+        f"WHERE category IN ({placeholders}) AND status='indexed'",
+        all_cats,
+    )).fetchone()
+
+    rows = await (await d.execute(
+        f"""SELECT * FROM files WHERE category IN ({placeholders}) AND status='indexed'
+        ORDER BY created_at {order_dir} LIMIT ? OFFSET ?""",
+        all_cats + [limit, offset],
+    )).fetchall()
+
+    files = []
+    for r in rows:
+        f = dict(r)
+        tags_val = f.get("tags")
+        if isinstance(tags_val, str):
+            try:
+                f["tags"] = json.loads(tags_val)
+            except Exception:
+                f["tags"] = []
+        files.append(f)
+
+    return {"files": files, "total": total_row["c"]}
+
+
 @router.get("/documents/{group_name}")
 async def get_document_group_files(
     group_name: str,
     tag: str | None = None,
+    sort: str = Query(default="newest"),
     limit: int = Query(default=50, le=200),
     offset: int = 0,
 ):
     from tifaw.main import db
 
     d = db.db
+    order_dir = "ASC" if sort == "oldest" else "DESC"
 
     # Check if it's a hardcoded group
     config = _PURPOSE_GROUPS.get(group_name)
@@ -145,7 +194,7 @@ async def get_document_group_files(
 
         rows = await (await d.execute(
             f"""SELECT * FROM files WHERE category IN ({placeholders}) AND status='indexed'
-            ORDER BY modified_at DESC LIMIT ? OFFSET ?""",
+            ORDER BY created_at {order_dir} LIMIT ? OFFSET ?""",
             config["categories"] + [limit, offset],
         )).fetchall()
     elif tag:
@@ -156,8 +205,8 @@ async def get_document_group_files(
         )).fetchone()
 
         rows = await (await d.execute(
-            """SELECT * FROM files WHERE status='indexed' AND tags LIKE ?
-            ORDER BY modified_at DESC LIMIT ? OFFSET ?""",
+            f"""SELECT * FROM files WHERE status='indexed' AND tags LIKE ?
+            ORDER BY created_at {order_dir} LIMIT ? OFFSET ?""",
             (f'%"{tag}"%', limit, offset),
         )).fetchall()
     else:
